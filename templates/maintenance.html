@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Maintenance — BoatKeeper{% endblock %}
+{% block content %}
+<nav class="navbar">
+    <div class="nav-left">
+        <a href="{{ url_for('index') }}" class="nav-brand">&#9875; BoatKeeper</a>
+    </div>
+    <div class="nav-center">
+        <a href="{{ url_for('index') }}" class="nav-link">Dashboard</a>
+        <a href="{{ url_for('boats') }}" class="nav-link">Boats</a>
+        <a href="{{ url_for('maintenance') }}" class="nav-link active">Maintenance</a>
+        <a href="{{ url_for('planning') }}" class="nav-link">Planning</a>
+        {% if current_user.role == 'admin' %}
+        <a href="{{ url_for('admin_panel') }}" class="nav-link">Admin</a>
+        {% endif %}
+    </div>
+    <div class="nav-right">
+        <span class="nav-user">&#128100; {{ current_user.full_name or current_user.username }}</span>
+        <a href="{{ url_for('logout') }}" class="btn btn-small">Logout</a>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="page-header">
+        <h2>&#128295; Maintenance Tasks</h2>
+        <button class="btn btn-primary" onclick="document.getElementById('addTaskForm').style.display='block'">+ Add Task</button>
+    </div>
+
+    <!-- Add Task Form -->
+    <div id="addTaskForm" class="form-panel" style="display:none;">
+        <h3>Add New Task</h3>
+        <form method="POST" action="{{ url_for('maintenance') }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="boat_name">Boat *</label>
+                    <select id="boat_name" name="boat_name" required>
+                        <option value="">Select a boat...</option>
+                        {% for boat in boats %}
+                        <option value="{{ boat.name }}">{{ boat.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <small>Or type a new boat name below</small>
+                    <input type="text" name="boat_name_manual" placeholder="New boat name" style="margin-top:5px;">
+                </div>
+                <div class="form-group">
+                    <label for="description">Description *</label>
+                    <input type="text" id="description" name="description" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="maintenance_type">Type</label>
+                    <select id="maintenance_type" name="maintenance_type">
+                        <option>General</option><option>Engine</option><option>Hull</option>
+                        <option>Sail</option><option>Electrical</option><option>Rigging</option>
+                        <option>Bottom Paint</option><option>Winterization</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="priority">Priority</label>
+                    <select id="priority" name="priority">
+                        <option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="due_date">Due Date</label>
+                    <input type="date" id="due_date" name="due_date">
+                </div>
+                <div class="form-group">
+                    <label for="cost">Cost ($)</label>
+                    <input type="number" id="cost" name="cost" step="0.01" min="0" value="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="notes">Notes</label>
+                <textarea id="notes" name="notes" rows="2"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Add Task</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('addTaskForm').style.display='none'">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tasks List -->
+    {% if maintenance %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Boat</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Due Date</th>
+                <th>Cost</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in maintenance %}
+            <tr>
+                <td>{{ task.boat_name }}</td>
+                <td>{{ task.description }}</td>
+                <td>{{ task.maintenance_type }}</td>
+                <td><span class="badge badge-{{ task.status|lower|replace(' ', '-') }}">{{ task.status }}</span></td>
+                <td><span class="badge badge-{{ task.priority|lower }}">{{ task.priority }}</span></td>
+                <td>{{ task.due_date or '—' }}</td>
+                <td>${% if task.cost %}{{ "%.2f"|format(task.cost) }}{% else %}0.00{% endif %}</td>
+                <td class="actions-cell">
+                    <button class="btn btn-small" onclick="document.getElementById('editTask{{ task.id }}').style.display='table-row'">Edit</button>
+                    <form method="POST" action="{{ url_for('delete_maintenance', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Delete this task?');">
+                        <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            <!-- Edit Row -->
+            <tr id="editTask{{ task.id }}" class="edit-row" style="display:none;">
+                <td colspan="8">
+                    <form method="POST" action="{{ url_for('edit_maintenance', task_id=task.id) }}" class="inline-edit-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Boat</label>
+                                <input type="text" name="boat_name" value="{{ task.boat_name }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <input type="text" name="description" value="{{ task.description }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Type</label>
+                                <select name="maintenance_type">
+                                    <option {% if task.maintenance_type=='General' %}selected{% endif %}>General</option>
+                                    <option {% if task.maintenance_type=='Engine' %}selected{% endif %}>Engine</option>
+                                    <option {% if task.maintenance_type=='Hull' %}selected{% endif %}>Hull</option>
+                                    <option {% if task.maintenance_type=='Sail' %}selected{% endif %}>Sail</option>
+                                    <option {% if task.maintenance_type=='Electrical' %}selected{% endif %}>Electrical</option>
+                                    <option {% if task.maintenance_type=='Rigging' %}selected{% endif %}>Rigging</option>
+                                    <option {% if task.maintenance_type=='Bottom Paint' %}selected{% endif %}>Bottom Paint</option>
+                                    <option {% if task.maintenance_type=='Winterization' %}selected{% endif %}>Winterization</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Status</label>
+                                <select name="status">
+                                    <option {% if task.status=='Needed' %}selected{% endif %}>Needed</option>
+                                    <option {% if task.status=='In Progress' %}selected{% endif %}>In Progress</option>
+                                    <option {% if task.status=='Done' %}selected{% endif %}>Done</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Priority</label>
+                                <select name="priority">
+                                    <option {% if task.priority=='Low' %}selected{% endif %}>Low</option>
+                                    <option {% if task.priority=='Normal' %}selected{% endif %}>Normal</option>
+                                    <option {% if task.priority=='High' %}selected{% endif %}>High</option>
+                                    <option {% if task.priority=='Urgent' %}selected{% endif %}>Urgent</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Due Date</label>
+                                <input type="date" name="due_date" value="{{ task.due_date or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Cost ($)</label>
+                                <input type="number" name="cost" step="0.01" value="{{ task.cost or 0 }}">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notes</label>
+                            <textarea name="notes" rows="2">{{ task.notes }}</textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save</button>
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('editTask{{ task.id }}').style.display='none'">Cancel</button>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No tasks yet. Add your first task above.</p>
+    {% endif %}
+</div>
+
+<script>
+// Handle manual boat name input
+document.querySelector('#addTaskForm select[name="boat_name"]').addEventListener('change', function() {
+    document.querySelector('#addTaskForm input[name="boat_name_manual"]').value = '';
+});
+document.querySelector('#addTaskForm input[name="boat_name_manual"]').addEventListener('input', function() {
+    if (this.value.trim()) {
+        document.querySelector('#addTaskForm select[name="boat_name"]').value = '';
+    }
+});
+</script>
+{% endblock %}

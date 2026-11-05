@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Planning — BoatKeeper{% endblock %}
+{% block content %}
+<nav class="navbar">
+    <div class="nav-left">
+        <a href="{{ url_for('index') }}" class="nav-brand">&#9875; BoatKeeper</a>
+    </div>
+    <div class="nav-center">
+        <a href="{{ url_for('index') }}" class="nav-link">Dashboard</a>
+        <a href="{{ url_for('boats') }}" class="nav-link">Boats</a>
+        <a href="{{ url_for('maintenance') }}" class="nav-link">Maintenance</a>
+        <a href="{{ url_for('planning') }}" class="nav-link active">Planning</a>
+        {% if current_user.role == 'admin' %}
+        <a href="{{ url_for('admin_panel') }}" class="nav-link">Admin</a>
+        {% endif %}
+    </div>
+    <div class="nav-right">
+        <span class="nav-user">&#128100; {{ current_user.full_name or current_user.username }}</span>
+        <a href="{{ url_for('logout') }}" class="btn btn-small">Logout</a>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="page-header">
+        <h2>&#128203; Planning Documents</h2>
+        <button class="btn btn-primary" onclick="document.getElementById('addPlanForm').style.display='block'">+ Add Plan</button>
+    </div>
+
+    <!-- Add Plan Form -->
+    <div id="addPlanForm" class="form-panel" style="display:none;">
+        <h3>Add New Plan</h3>
+        <form method="POST" action="{{ url_for('planning') }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="title">Title *</label>
+                    <input type="text" id="title" name="title" required>
+                </div>
+                <div class="form-group">
+                    <label for="boat_name">Boat</label>
+                    <select id="boat_name" name="boat_name">
+                        <option value="">Any boat</option>
+                        {% for boat in boats %}
+                        <option value="{{ boat.name }}">{{ boat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="planned_start">Start Date</label>
+                    <input type="date" id="planned_start" name="planned_start">
+                </div>
+                <div class="form-group">
+                    <label for="planned_end">End Date</label>
+                    <input type="date" id="planned_end" name="planned_end">
+                </div>
+                <div class="form-group">
+                    <label for="status">Status</label>
+                    <select id="status" name="status">
+                        <option>Draft</option><option>Active</option><option>Completed</option><option>Cancelled</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" rows="2"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="notes">Notes</label>
+                <textarea id="notes" name="notes" rows="2"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Add Plan</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('addPlanForm').style.display='none'">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Plans List -->
+    {% if planning_docs %}
+    <div class="plans-list">
+        {% for plan in planning_docs %}
+        <div class="plan-card">
+            <div class="plan-header">
+                <h3>{{ plan.title }}</h3>
+                <div class="plan-actions">
+                    <span class="badge badge-{{ plan.status|lower }}">{{ plan.status }}</span>
+                    <button class="btn btn-small" onclick="document.getElementById('editPlan{{ plan.id }}').style.display='block'">Edit</button>
+                    <form method="POST" action="{{ url_for('delete_planning', doc_id=plan.id) }}" style="display:inline;" onsubmit="return confirm('Delete this plan?');">
+                        <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% if plan.description %}<p>{{ plan.description }}</p>{% endif %}
+            <div class="plan-meta">
+                {% if plan.boat_name %}<span>Boat: {{ plan.boat_name }}</span>{% endif %}
+                {% if plan.planned_start %}<span>From: {{ plan.planned_start }}</span>{% endif %}
+                {% if plan.planned_end %}<span>To: {{ plan.planned_end }}</span>{% endif %}
+            </div>
+            {% if plan.notes %}<p class="plan-notes">{{ plan.notes }}</p>{% endif %}
+            <!-- Edit Form -->
+            <div id="editPlan{{ plan.id }}" class="form-panel" style="display:none; margin-top:10px;">
+                <form method="POST" action="{{ url_for('edit_planning', doc_id=plan.id) }}">
+                    <div class="form-group">
+                        <label>Title</label>
+                        <input type="text" name="title" value="{{ plan.title }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Boat</label>
+                        <input type="text" name="boat_name" value="{{ plan.boat_name }}">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" name="planned_start" value="{{ plan.planned_start or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>End Date</label>
+                            <input type="date" name="planned_end" value="{{ plan.planned_end or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Status</label>
+                            <select name="status">
+                                <option {% if plan.status=='Draft' %}selected{% endif %}>Draft</option>
+                                <option {% if plan.status=='Active' %}selected{% endif %}>Active</option>
+                                <option {% if plan.status=='Completed' %}selected{% endif %}>Completed</option>
+                                <option {% if plan.status=='Cancelled' %}selected{% endif %}>Cancelled</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="2">{{ plan.description }}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea name="notes" rows="2">{{ plan.notes }}</textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('editPlan{{ plan.id }}').style.display='none'">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No plans yet. Create your first plan above.</p>
+    {% endif %}
+</div>
+{% endblock %}
