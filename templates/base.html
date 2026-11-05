@@ -3,29 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}BoatKeeper{% endblock %}</title>
+    <title>{% block title %}BoatKeeper{% endblock %} — Marina Caretaker</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    {% with messages = get_flashed_messages(with_categories=true) %}
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="{{ url_for('index') }}">⚓ BoatKeeper</a>
+        </div>
+        <div class="nav-links">
+            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Dashboard</a>
+            <a href="{{ url_for('boats') }}" class="{% if request.endpoint == 'boats' %}active{% endif %}">Vessels</a>
+            <a href="{{ url_for('inspections') }}" class="{% if 'inspection' in (request.endpoint or '') %}active{% endif %}">Inspections</a>
+            <a href="{{ url_for('maintenance') }}" class="{% if request.endpoint == 'maintenance' %}active{% endif %}">Maintenance</a>
+            <a href="{{ url_for('engine_logs') }}" class="{% if request.endpoint == 'engine_logs' %}active{% endif %}">Engine Logs</a>
+            <a href="{{ url_for('incidents') }}" class="{% if request.endpoint == 'incidents' %}active{% endif %}">Incidents</a>
+            <a href="{{ url_for('certificates') }}" class="{% if request.endpoint == 'certificates' %}active{% endif %}">Certificates</a>
+            <a href="{{ url_for('reports') }}" class="{% if request.endpoint == 'reports' %}active{% endif %}">Reports</a>
+            <a href="{{ url_for('planning') }}" class="{% if request.endpoint == 'planning' %}active{% endif %}">Planning</a>
+            {% if current_user.is_authenticated and current_user.role == 'admin' %}
+            <a href="{{ url_for('admin_panel') }}" class="{% if request.endpoint == 'admin_panel' %}active{% endif %}">Admin</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="btn-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            <div class="flash-messages">
-                {% for category, message in messages %}
-                    <div class="flash flash-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            </div>
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
         {% endif %}
-    {% endwith %}
+        {% endwith %}
 
-    {% block content %}{% endblock %}
+        {% block content %}{% endblock %}
+    </div>
 
-    <script>
-        // Auto-hide flash messages after 4 seconds
-        setTimeout(function() {
-            document.querySelectorAll('.flash-messages').forEach(function(el) {
-                el.remove();
-            });
-        }, 4000);
-    </script>
+    <footer class="footer">
+        <p>BoatKeeper — Marina Caretaker Management System</p>
+    </footer>
 </body>
 </html>

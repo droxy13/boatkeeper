@@ -1,93 +1,111 @@
 {% extends "base.html" %}
-{% block title %}Maintenance — BoatKeeper{% endblock %}
+{% block title %}Maintenance{% endblock %}
 {% block content %}
-<nav class="navbar">
-    <div class="nav-left">
-        <a href="{{ url_for('index') }}" class="nav-brand">&#9875; BoatKeeper</a>
-    </div>
-    <div class="nav-center">
-        <a href="{{ url_for('index') }}" class="nav-link">Dashboard</a>
-        <a href="{{ url_for('boats') }}" class="nav-link">Boats</a>
-        <a href="{{ url_for('maintenance') }}" class="nav-link active">Maintenance</a>
-        <a href="{{ url_for('planning') }}" class="nav-link">Planning</a>
-        {% if current_user.role == 'admin' %}
-        <a href="{{ url_for('admin_panel') }}" class="nav-link">Admin</a>
-        {% endif %}
-    </div>
-    <div class="nav-right">
-        <span class="nav-user">&#128100; {{ current_user.full_name or current_user.username }}</span>
-        <a href="{{ url_for('logout') }}" class="btn btn-small">Logout</a>
-    </div>
-</nav>
+<h1>Maintenance</h1>
 
-<div class="container">
-    <div class="page-header">
-        <h2>&#128295; Maintenance Tasks</h2>
-        <button class="btn btn-primary" onclick="document.getElementById('addTaskForm').style.display='block'">+ Add Task</button>
+<div class="section">
+    <div class="section-header">
+        <h2>Add Maintenance Task</h2>
     </div>
-
-    <!-- Add Task Form -->
-    <div id="addTaskForm" class="form-panel" style="display:none;">
-        <h3>Add New Task</h3>
-        <form method="POST" action="{{ url_for('maintenance') }}">
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="boat_name">Boat *</label>
-                    <select id="boat_name" name="boat_name" required>
-                        <option value="">Select a boat...</option>
-                        {% for boat in boats %}
-                        <option value="{{ boat.name }}">{{ boat.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <small>Or type a new boat name below</small>
-                    <input type="text" name="boat_name_manual" placeholder="New boat name" style="margin-top:5px;">
-                </div>
-                <div class="form-group">
-                    <label for="description">Description *</label>
-                    <input type="text" id="description" name="description" required>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="maintenance_type">Type</label>
-                    <select id="maintenance_type" name="maintenance_type">
-                        <option>General</option><option>Engine</option><option>Hull</option>
-                        <option>Sail</option><option>Electrical</option><option>Rigging</option>
-                        <option>Bottom Paint</option><option>Winterization</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="priority">Priority</label>
-                    <select id="priority" name="priority">
-                        <option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="due_date">Due Date</label>
-                    <input type="date" id="due_date" name="due_date">
-                </div>
-                <div class="form-group">
-                    <label for="cost">Cost ($)</label>
-                    <input type="number" id="cost" name="cost" step="0.01" min="0" value="0">
-                </div>
+    <form method="POST" class="form-card">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Vessel *</label>
+                <select name="boat_id" required>
+                    <option value="">Select vessel</option>
+                    {% for boat in boats %}
+                    <option value="{{ boat.id }}">{{ boat.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="form-group">
-                <label for="notes">Notes</label>
-                <textarea id="notes" name="notes" rows="2"></textarea>
+                <label>Type</label>
+                <select name="maintenance_type">
+                    <option value="General">General</option>
+                    <option value="Engine">Engine</option>
+                    <option value="Hull">Hull</option>
+                    <option value="Electrical">Electrical</option>
+                    <option value="Safety">Safety</option>
+                    <option value="Cosmetic">Cosmetic</option>
+                </select>
             </div>
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Add Task</button>
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('addTaskForm').style.display='none'">Cancel</button>
+            <div class="form-group">
+                <label>Priority</label>
+                <select name="priority">
+                    <option value="Normal">Normal</option>
+                    <option value="Low">Low</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                </select>
             </div>
-        </form>
-    </div>
+            <div class="form-group">
+                <label>Due Date</label>
+                <input type="date" name="due_date">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Description *</label>
+            <textarea name="description" rows="2" required></textarea>
+        </div>
+        <fieldset class="form-fieldset">
+            <legend>Technical Details</legend>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Engine Hours</label>
+                    <input type="number" name="engine_hours" step="0.1" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Fluid Level</label>
+                    <select name="fluid_level">
+                        <option value="">Select</option>
+                        <option value="Normal">Normal</option>
+                        <option value="Low">Low</option>
+                        <option value="Critical">Critical</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Filter Condition</label>
+                    <select name="filter_condition">
+                        <option value="">Select</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                        <option value="Replaced">Replaced</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Battery Status</label>
+                    <select name="battery_status">
+                        <option value="">Select</option>
+                        <option value="Good">Good</option>
+                        <option value="Weak">Weak</option>
+                        <option value="Dead">Dead</option>
+                        <option value="Replaced">Replaced</option>
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Cost</label>
+                <input type="number" name="cost" step="0.01" min="0" value="0">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Notes</label>
+            <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Task</button>
+    </form>
+</div>
 
-    <!-- Tasks List -->
+<div class="section">
+    <h2>Maintenance Tasks</h2>
     {% if maintenance %}
     <table class="data-table">
         <thead>
             <tr>
-                <th>Boat</th>
+                <th>Vessel</th>
                 <th>Description</th>
                 <th>Type</th>
                 <th>Status</th>
@@ -98,82 +116,36 @@
             </tr>
         </thead>
         <tbody>
-            {% for task in maintenance %}
+            {% for m in maintenance %}
             <tr>
-                <td>{{ task.boat_name }}</td>
-                <td>{{ task.description }}</td>
-                <td>{{ task.maintenance_type }}</td>
-                <td><span class="badge badge-{{ task.status|lower|replace(' ', '-') }}">{{ task.status }}</span></td>
-                <td><span class="badge badge-{{ task.priority|lower }}">{{ task.priority }}</span></td>
-                <td>{{ task.due_date or '—' }}</td>
-                <td>${% if task.cost %}{{ "%.2f"|format(task.cost) }}{% else %}0.00{% endif %}</td>
-                <td class="actions-cell">
-                    <button class="btn btn-small" onclick="document.getElementById('editTask{{ task.id }}').style.display='table-row'">Edit</button>
-                    <form method="POST" action="{{ url_for('delete_maintenance', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Delete this task?');">
-                        <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                <td>{{ m.boat_name or 'Unknown' }}</td>
+                <td>{{ m.description[:40] }}{% if m.description|length > 40 %}...{% endif %}</td>
+                <td>{{ m.maintenance_type }}</td>
+                <td><span class="badge badge-{{ m.status|lower|replace(' ', '-') }}">{{ m.status }}</span></td>
+                <td><span class="badge badge-{{ m.priority|lower }}">{{ m.priority }}</span></td>
+                <td>{{ m.due_date or '-' }}</td>
+                <td>{{ "%.2f"|format(m.cost) if m.cost else '-' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('edit_maintenance', task_id=m.id) }}" class="inline-form">
+                        <input type="hidden" name="boat_id" value="{{ m.boat_id }}">
+                        <input type="hidden" name="description" value="{{ m.description }}">
+                        <input type="hidden" name="maintenance_type" value="{{ m.maintenance_type }}">
+                        <input type="hidden" name="category" value="{{ m.category or '' }}">
+                        <input type="hidden" name="status" value="{{ m.status }}">
+                        <input type="hidden" name="priority" value="{{ m.priority }}">
+                        <input type="hidden" name="due_date" value="{{ m.due_date or '' }}">
+                        <input type="hidden" name="started_date" value="{{ m.started_date or '' }}">
+                        <input type="hidden" name="completed_date" value="{{ m.completed_date or '' }}">
+                        <input type="hidden" name="notes" value="{{ m.notes }}">
+                        <input type="hidden" name="cost" value="{{ m.cost }}">
+                        <input type="hidden" name="engine_hours" value="{{ m.engine_hours or 0 }}">
+                        <input type="hidden" name="fluid_level" value="{{ m.fluid_level or '' }}">
+                        <input type="hidden" name="filter_condition" value="{{ m.filter_condition or '' }}">
+                        <input type="hidden" name="battery_status" value="{{ m.battery_status or '' }}">
+                        <button type="submit" class="btn btn-sm">Edit</button>
                     </form>
-                </td>
-            </tr>
-            <!-- Edit Row -->
-            <tr id="editTask{{ task.id }}" class="edit-row" style="display:none;">
-                <td colspan="8">
-                    <form method="POST" action="{{ url_for('edit_maintenance', task_id=task.id) }}" class="inline-edit-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Boat</label>
-                                <input type="text" name="boat_name" value="{{ task.boat_name }}">
-                            </div>
-                            <div class="form-group">
-                                <label>Description</label>
-                                <input type="text" name="description" value="{{ task.description }}">
-                            </div>
-                            <div class="form-group">
-                                <label>Type</label>
-                                <select name="maintenance_type">
-                                    <option {% if task.maintenance_type=='General' %}selected{% endif %}>General</option>
-                                    <option {% if task.maintenance_type=='Engine' %}selected{% endif %}>Engine</option>
-                                    <option {% if task.maintenance_type=='Hull' %}selected{% endif %}>Hull</option>
-                                    <option {% if task.maintenance_type=='Sail' %}selected{% endif %}>Sail</option>
-                                    <option {% if task.maintenance_type=='Electrical' %}selected{% endif %}>Electrical</option>
-                                    <option {% if task.maintenance_type=='Rigging' %}selected{% endif %}>Rigging</option>
-                                    <option {% if task.maintenance_type=='Bottom Paint' %}selected{% endif %}>Bottom Paint</option>
-                                    <option {% if task.maintenance_type=='Winterization' %}selected{% endif %}>Winterization</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Status</label>
-                                <select name="status">
-                                    <option {% if task.status=='Needed' %}selected{% endif %}>Needed</option>
-                                    <option {% if task.status=='In Progress' %}selected{% endif %}>In Progress</option>
-                                    <option {% if task.status=='Done' %}selected{% endif %}>Done</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Priority</label>
-                                <select name="priority">
-                                    <option {% if task.priority=='Low' %}selected{% endif %}>Low</option>
-                                    <option {% if task.priority=='Normal' %}selected{% endif %}>Normal</option>
-                                    <option {% if task.priority=='High' %}selected{% endif %}>High</option>
-                                    <option {% if task.priority=='Urgent' %}selected{% endif %}>Urgent</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Due Date</label>
-                                <input type="date" name="due_date" value="{{ task.due_date or '' }}">
-                            </div>
-                            <div class="form-group">
-                                <label>Cost ($)</label>
-                                <input type="number" name="cost" step="0.01" value="{{ task.cost or 0 }}">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Notes</label>
-                            <textarea name="notes" rows="2">{{ task.notes }}</textarea>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Save</button>
-                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('editTask{{ task.id }}').style.display='none'">Cancel</button>
-                        </div>
+                    <form method="POST" action="{{ url_for('delete_maintenance', task_id=m.id) }}" class="inline-form" onsubmit="return confirm('Delete this task?')">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
                     </form>
                 </td>
             </tr>
@@ -181,19 +153,7 @@
         </tbody>
     </table>
     {% else %}
-    <p class="empty-state">No tasks yet. Add your first task above.</p>
+    <p class="empty-state">No maintenance tasks yet.</p>
     {% endif %}
 </div>
-
-<script>
-// Handle manual boat name input
-document.querySelector('#addTaskForm select[name="boat_name"]').addEventListener('change', function() {
-    document.querySelector('#addTaskForm input[name="boat_name_manual"]').value = '';
-});
-document.querySelector('#addTaskForm input[name="boat_name_manual"]').addEventListener('input', function() {
-    if (this.value.trim()) {
-        document.querySelector('#addTaskForm select[name="boat_name"]').value = '';
-    }
-});
-</script>
 {% endblock %}

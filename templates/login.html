@@ -1,21 +1,39 @@
-{% extends "base.html" %}
-{% block title %}Login — BoatKeeper{% endblock %}
-{% block content %}
-<div class="login-page">
-    <div class="login-box">
-        <h1>&#9875; BoatKeeper</h1>
-        <p class="login-subtitle">Boat Maintenance Tracker</p>
-        <form method="POST" class="login-form">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required autofocus>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — BoatKeeper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-card">
+            <h1>⚓ BoatKeeper</h1>
+            <p class="login-subtitle">Marina Caretaker Management System</p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
             </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit" class="btn btn-primary btn-full">Log In</button>
-        </form>
+            {% endif %}
+            {% endwith %}
+
+            <form method="POST" class="login-form">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Login</button>
+            </form>
+        </div>
     </div>
-</div>
-{% endblock %}
+</body>
+</html>

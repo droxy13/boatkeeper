@@ -1,134 +1,185 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — BoatKeeper{% endblock %}
+{% block title %}Dashboard{% endblock %}
 {% block content %}
-<nav class="navbar">
-    <div class="nav-left">
-        <a href="{{ url_for('index') }}" class="nav-brand">&#9875; BoatKeeper</a>
-    </div>
-    <div class="nav-center">
-        <a href="{{ url_for('index') }}" class="nav-link active">Dashboard</a>
-        <a href="{{ url_for('boats') }}" class="nav-link">Boats</a>
-        <a href="{{ url_for('maintenance') }}" class="nav-link">Maintenance</a>
-        <a href="{{ url_for('planning') }}" class="nav-link">Planning</a>
-        {% if current_user.role == 'admin' %}
-        <a href="{{ url_for('admin_panel') }}" class="nav-link">Admin</a>
-        {% endif %}
-    </div>
-    <div class="nav-right">
-        <span class="nav-user">&#128100; {{ current_user.full_name or current_user.username }}</span>
-        <a href="{{ url_for('logout') }}" class="btn btn-small">Logout</a>
-    </div>
-</nav>
+<h1>Dashboard</h1>
 
-<div class="container">
-    <!-- Stats Cards -->
-    <div class="stats-row">
-        <div class="stat-card stat-urgent">
-            <div class="stat-number">{{ urgent }}</div>
-            <div class="stat-label">Urgent</div>
-        </div>
-        <div class="stat-card stat-needed">
-            <div class="stat-number">{{ needed }}</div>
-            <div class="stat-label">Needed</div>
-        </div>
-        <div class="stat-card stat-progress">
-            <div class="stat-number">{{ in_progress }}</div>
-            <div class="stat-label">In Progress</div>
-        </div>
-        <div class="stat-card stat-done">
-            <div class="stat-number">{{ done }}</div>
-            <div class="stat-label">Done</div>
-        </div>
-        <div class="stat-card stat-boats">
-            <div class="stat-number">{{ boats|length }}</div>
-            <div class="stat-label">Boats</div>
-        </div>
+<!-- Stats Cards -->
+<div class="stats-grid">
+    <div class="stat-card stat-boats">
+        <div class="stat-number">{{ boats|length }}</div>
+        <div class="stat-label">Vessels</div>
     </div>
+    <div class="stat-card stat-needed">
+        <div class="stat-number">{{ needed }}</div>
+        <div class="stat-label">Tasks Needed</div>
+    </div>
+    <div class="stat-card stat-progress">
+        <div class="stat-number">{{ in_progress }}</div>
+        <div class="stat-label">In Progress</div>
+    </div>
+    <div class="stat-card stat-done">
+        <div class="stat-number">{{ done }}</div>
+        <div class="stat-label">Completed</div>
+    </div>
+    <div class="stat-card stat-urgent {% if urgent > 0 %}stat-alert{% endif %}">
+        <div class="stat-number">{{ urgent }}</div>
+        <div class="stat-label">Urgent</div>
+    </div>
+    <div class="stat-card stat-alerts {% if unread_alerts > 0 %}stat-alert{% endif %}">
+        <div class="stat-number">{{ unread_alerts }}</div>
+        <div class="stat-label">Alerts</div>
+    </div>
+    <div class="stat-card stat-incidents {% if open_incidents > 0 %}stat-alert{% endif %}">
+        <div class="stat-number">{{ open_incidents }}</div>
+        <div class="stat-label">Open Incidents</div>
+    </div>
+</div>
 
-    <!-- Quick Actions -->
+<!-- Alerts Section -->
+{% if alerts %}
+<div class="section">
+    <div class="section-header">
+        <h2>🔔 Alerts</h2>
+        <form method="POST" action="{{ url_for('mark_all_alerts_read') }}" class="inline-form">
+            <button type="submit" class="btn btn-sm">Mark all read</button>
+        </form>
+    </div>
+    <div class="alert-list">
+        {% for alert in alerts %}
+        <div class="alert-item alert-{{ alert.alert_type|lower }}">
+            <div class="alert-content">
+                <strong>{{ alert.boat_name or 'Unknown' }}</strong>: {{ alert.title }}
+                <span class="alert-date">{{ alert.alert_date }}</span>
+            </div>
+            <form method="POST" action="{{ url_for('mark_alert_read', alert_id=alert.id) }}" class="inline-form">
+                <button type="submit" class="btn btn-sm btn-secondary">Dismiss</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Expiring Certificates -->
+{% if expiring_certs %}
+<div class="section">
+    <h2>⚠️ Certificates Expiring Soon</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Boat</th>
+                <th>Certificate</th>
+                <th>Expiry Date</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cert in expiring_certs %}
+            <tr>
+                <td>{{ cert.boat_name or 'Unknown' }}</td>
+                <td>{{ cert.cert_name }}</td>
+                <td>{{ cert.expiry_date }}</td>
+                <td><span class="badge badge-warning">{{ cert.status }}</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Open Incidents -->
+{% if incidents %}
+<div class="section">
+    <h2>🚨 Open Incidents</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Boat</th>
+                <th>Type</th>
+                <th>Severity</th>
+                <th>Description</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for incident in incidents %}
+            <tr>
+                <td>{{ incident.boat_name or 'Unknown' }}</td>
+                <td>{{ incident.incident_type }}</td>
+                <td><span class="badge badge-{{ incident.severity|lower }}">{{ incident.severity }}</span></td>
+                <td>{{ incident.description[:50] }}{% if incident.description|length > 50 %}...{% endif %}</td>
+                <td>{{ incident.incident_date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Recent Maintenance -->
+<div class="section">
+    <div class="section-header">
+        <h2>🔧 Recent Maintenance</h2>
+        <a href="{{ url_for('maintenance') }}" class="btn">Add Task</a>
+    </div>
+    {% if maintenance %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Boat</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Due Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in maintenance[:10] %}
+            <tr>
+                <td>{{ m.boat_name or 'Unknown' }}</td>
+                <td>{{ m.description[:40] }}{% if m.description|length > 40 %}...{% endif %}</td>
+                <td>{{ m.maintenance_type }}</td>
+                <td><span class="badge badge-{{ m.status|lower|replace(' ', '-') }}">{{ m.status }}</span></td>
+                <td><span class="badge badge-{{ m.priority|lower }}">{{ m.priority }}</span></td>
+                <td>{{ m.due_date or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No maintenance tasks yet. <a href="{{ url_for('maintenance') }}">Add one</a></p>
+    {% endif %}
+</div>
+
+<!-- Quick Actions -->
+<div class="section">
+    <h2>Quick Actions</h2>
     <div class="quick-actions">
-        <a href="{{ url_for('maintenance') }}" class="btn btn-primary">+ Add Task</a>
-        <a href="{{ url_for('boats') }}" class="btn btn-secondary">+ Add Boat</a>
-        <a href="{{ url_for('planning') }}" class="btn btn-secondary">+ Add Plan</a>
-    </div>
-
-    <!-- Boats Overview -->
-    <div class="section">
-        <h2>&#128693; Boats in Yard</h2>
-        {% if boats %}
-        <div class="boats-grid">
-            {% for boat in boats %}
-            <div class="boat-card">
-                <h3>{{ boat.name }}</h3>
-                <p class="boat-details">{{ boat.brand }} {{ boat.model }}{% if boat.year %} ({{ boat.year }}){% endif %}</p>
-                {% if boat.hull_number %}
-                <p class="boat-hull">Hull: {{ boat.hull_number }}</p>
-                {% endif %}
-                {% set boat_tasks = maintenance | select('equalto', boat.name, 'boat_name') | list %}
-                {% set active = boat_tasks | select('ne', 'Done', 'status') | list | length %}
-                <span class="badge badge-task">{{ active }} active tasks</span>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="empty-state">No boats yet. <a href="{{ url_for('boats') }}">Add your first boat</a>.</p>
-        {% endif %}
-    </div>
-
-    <!-- Recent Maintenance -->
-    <div class="section">
-        <h2>&#128295; Recent Tasks</h2>
-        {% if maintenance %}
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Boat</th>
-                    <th>Description</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Priority</th>
-                    <th>Due Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for task in maintenance[:15] %}
-                <tr>
-                    <td>{{ task.boat_name }}</td>
-                    <td>{{ task.description }}</td>
-                    <td>{{ task.maintenance_type }}</td>
-                    <td><span class="badge badge-{{ task.status|lower|replace(' ', '-') }}">{{ task.status }}</span></td>
-                    <td><span class="badge badge-{{ task.priority|lower }}">{{ task.priority }}</span></td>
-                    <td>{{ task.due_date or '—' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p class="empty-state">No tasks yet. <a href="{{ url_for('maintenance') }}">Add your first task</a>.</p>
-        {% endif %}
-    </div>
-
-    <!-- Planning -->
-    <div class="section">
-        <h2>&#128203; Active Plans</h2>
-        {% if planning %}
-        <div class="plans-list">
-            {% for plan in planning %}
-            <div class="plan-card">
-                <h3>{{ plan.title }}</h3>
-                <p>{{ plan.description }}</p>
-                <div class="plan-meta">
-                    <span class="badge badge-{{ plan.status|lower }}">{{ plan.status }}</span>
-                    {% if plan.boat_name %}<span>Boat: {{ plan.boat_name }}</span>{% endif %}
-                    {% if plan.planned_start %}<span>From: {{ plan.planned_start }}</span>{% endif %}
-                    {% if plan.planned_end %}<span>To: {{ plan.planned_end }}</span>{% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="empty-state">No plans yet. <a href="{{ url_for('planning') }}">Create a plan</a>.</p>
-        {% endif %}
+        <a href="{{ url_for('boats') }}" class="action-card">
+            <span class="action-icon">🚤</span>
+            <span>Add Vessel</span>
+        </a>
+        <a href="{{ url_for('inspections') }}" class="action-card">
+            <span class="action-icon">📋</span>
+            <span>New Inspection</span>
+        </a>
+        <a href="{{ url_for('incidents') }}" class="action-card">
+            <span class="action-icon">⚠️</span>
+            <span>Report Incident</span>
+        </a>
+        <a href="{{ url_for('engine_logs') }}" class="action-card">
+            <span class="action-icon">⚙️</span>
+            <span>Log Engine Hours</span>
+        </a>
+        <a href="{{ url_for('certificates') }}" class="action-card">
+            <span class="action-icon">📄</span>
+            <span>Manage Certificates</span>
+        </a>
+        <a href="{{ url_for('reports') }}" class="action-card">
+            <span class="action-icon">📊</span>
+            <span>Create Report</span>
+        </a>
     </div>
 </div>
 {% endblock %}

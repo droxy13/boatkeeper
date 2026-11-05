@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Inspection Detail{% endblock %}
+{% block content %}
+<h1>Inspection Report</h1>
+
+<div class="section">
+    <div class="inspection-header">
+        <div class="inspection-meta">
+            <h2>{{ inspection.boat_name or 'Unknown' }}</h2>
+            <p><strong>Date:</strong> {{ inspection.inspection_date }}</p>
+            <p><strong>Inspector:</strong> {{ inspection.inspector_name or '-' }}</p>
+            <p><strong>Weather:</strong> {{ inspection.weather or '-' }}</p>
+            <p><strong>Overall:</strong> <span class="badge badge-{{ inspection.overall_status|lower }}">{{ inspection.overall_status }}</span></p>
+        </div>
+        <form method="POST" action="{{ url_for('delete_inspection', inspection_id=inspection.id) }}" onsubmit="return confirm('Delete this inspection?')">
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+    </div>
+
+    {% if inspection.notes %}
+    <div class="inspection-notes">
+        <h3>General Notes</h3>
+        <p>{{ inspection.notes }}</p>
+    </div>
+    {% endif %}
+
+    {% for category, items in items_by_category.items() %}
+    <div class="checklist-category">
+        <h3>{{ category }}</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td><strong>{{ item.item_name }}</strong></td>
+                    <td>{{ item.item_description }}</td>
+                    <td><span class="badge badge-{{ item.status|lower|replace('/', '-') }}">{{ item.status }}</span></td>
+                    <td>{{ item.notes or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+</div>
+
+<a href="{{ url_for('inspections') }}" class="btn btn-secondary">Back to Inspections</a>
+{% endblock %}

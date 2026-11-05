@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<h1>Owner Reports & Communication</h1>
+
+<div class="section">
+    <div class="section-header">
+        <h2>Create Report</h2>
+    </div>
+    <form method="POST" class="form-card">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Vessel *</label>
+                <select name="boat_id" required>
+                    <option value="">Select vessel</option>
+                    {% for boat in boats %}
+                    <option value="{{ boat.id }}">{{ boat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Report Type</label>
+                <select name="report_type">
+                    <option value="Status">Status Update</option>
+                    <option value="Inspection">Inspection Summary</option>
+                    <option value="Maintenance">Maintenance Report</option>
+                    <option value="Incident">Incident Report</option>
+                    <option value="Monthly">Monthly Summary</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" name="report_date" value="{{ today }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Title *</label>
+            <input type="text" name="title" required placeholder="e.g. Weekly Status Update">
+        </div>
+        <div class="form-group">
+            <label>Content</label>
+            <textarea name="content" rows="6" placeholder="Write the report content here..."></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Create Report</button>
+    </form>
+</div>
+
+<div class="section">
+    <h2>Report Archive</h2>
+    {% if reports %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Vessel</th>
+                <th>Type</th>
+                <th>Title</th>
+                <th>Date</th>
+                <th>Author</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for report in reports %}
+            <tr>
+                <td>{{ report.boat_name or 'Unknown' }}</td>
+                <td>{{ report.report_type }}</td>
+                <td>{{ report.title }}</td>
+                <td>{{ report.report_date }}</td>
+                <td>{{ report.author_name or '-' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('delete_report', report_id=report.id) }}" class="inline-form" onsubmit="return confirm('Delete this report?')">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No reports yet.</p>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.querySelector('input[name="report_date"]');
+    if (dateInput) dateInput.value = today;
+});
+</script>
+{% endblock %}

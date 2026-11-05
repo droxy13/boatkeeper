@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Incidents{% endblock %}
+{% block content %}
+<h1>Incidents & Damage Reports</h1>
+
+<div class="section">
+    <div class="section-header">
+        <h2>Report Incident</h2>
+    </div>
+    <form method="POST" class="form-card">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Vessel *</label>
+                <select name="boat_id" required>
+                    <option value="">Select vessel</option>
+                    {% for boat in boats %}
+                    <option value="{{ boat.id }}">{{ boat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Type</label>
+                <select name="incident_type">
+                    <option value="Damage">Damage</option>
+                    <option value="Safety">Safety Issue</option>
+                    <option value="Theft">Theft</option>
+                    <option value="Weather">Weather Damage</option>
+                    <option value="Mechanical">Mechanical Failure</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Severity</label>
+                <select name="severity">
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Critical">Critical</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" name="incident_date" value="{{ today }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Description *</label>
+            <textarea name="description" rows="3" required placeholder="Describe the incident in detail..."></textarea>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Estimated Cost</label>
+                <input type="number" name="cost" step="0.01" min="0" value="0">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Additional Notes</label>
+            <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Report Incident</button>
+    </form>
+</div>
+
+<div class="section">
+    <h2>Incident History</h2>
+    {% if incidents %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Vessel</th>
+                <th>Type</th>
+                <th>Severity</th>
+                <th>Description</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Cost</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inc in incidents %}
+            <tr>
+                <td>{{ inc.boat_name or 'Unknown' }}</td>
+                <td>{{ inc.incident_type }}</td>
+                <td><span class="badge badge-{{ inc.severity|lower }}">{{ inc.severity }}</span></td>
+                <td>{{ inc.description[:40] }}{% if inc.description|length > 40 %}...{% endif %}</td>
+                <td>{{ inc.incident_date }}</td>
+                <td><span class="badge badge-{{ inc.status|lower }}">{{ inc.status }}</span></td>
+                <td>{{ "%.2f"|format(inc.cost) if inc.cost else '-' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('edit_incident', incident_id=inc.id) }}" class="inline-form">
+                        <input type="hidden" name="incident_type" value="{{ inc.incident_type }}">
+                        <input type="hidden" name="severity" value="{{ inc.severity }}">
+                        <input type="hidden" name="description" value="{{ inc.description }}">
+                        <input type="hidden" name="incident_date" value="{{ inc.incident_date }}">
+                        <input type="hidden" name="status" value="{{ inc.status }}">
+                        <input type="hidden" name="notes" value="{{ inc.notes }}">
+                        <input type="hidden" name="cost" value="{{ inc.cost }}">
+                        <button type="submit" class="btn btn-sm">Edit</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('delete_incident', incident_id=inc.id) }}" class="inline-form" onsubmit="return confirm('Delete this incident?')">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No incidents reported.</p>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.querySelector('input[name="incident_date"]');
+    if (dateInput) dateInput.value = today;
+});
+</script>
+{% endblock %}

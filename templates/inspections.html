@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Inspections{% endblock %}
+{% block content %}
+<h1>Inspections & Checklists</h1>
+
+<div class="section">
+    <div class="section-header">
+        <h2>New Inspection</h2>
+    </div>
+    <form method="POST" class="form-card" id="inspection-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Vessel *</label>
+                <select name="boat_id" required>
+                    <option value="">Select vessel</option>
+                    {% for boat in boats %}
+                    <option value="{{ boat.id }}">{{ boat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" name="inspection_date" value="{{ today }}">
+            </div>
+            <div class="form-group">
+                <label>Weather</label>
+                <select name="weather">
+                    <option value="">Select</option>
+                    <option value="Sunny">Sunny</option>
+                    <option value="Cloudy">Cloudy</option>
+                    <option value="Rainy">Rainy</option>
+                    <option value="Windy">Windy</option>
+                    <option value="Stormy">Stormy</option>
+                </select>
+            </div>
+        </div>
+
+        {% for category, items in categories.items() %}
+        <fieldset class="checklist-category">
+            <legend>{{ category }}</legend>
+            {% for item_name, item_desc in items %}
+            {% set safe_cat = category.replace(' ', '_').replace('&', '').replace('(', '').replace(')', '').replace(',', '') %}
+            {% set safe_item = item_name.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '').replace('/', '_') %}
+            <div class="checklist-item">
+                <div class="checklist-item-header">
+                    <strong>{{ item_name }}</strong>
+                    <span class="checklist-desc">{{ item_desc }}</span>
+                </div>
+                <div class="checklist-item-controls">
+                    <select name="{{ safe_cat }}_{{ safe_item }}_status">
+                        <option value="Pass">Pass</option>
+                        <option value="Fail">Fail</option>
+                        <option value="N/A">N/A</option>
+                        <option value="Pending">Pending</option>
+                    </select>
+                    <input type="text" name="{{ safe_cat }}_{{ safe_item }}_notes" placeholder="Notes...">
+                </div>
+            </div>
+            {% endfor %}
+        </fieldset>
+        {% endfor %}
+
+        <div class="form-group">
+            <label>General Notes</label>
+            <textarea name="notes" rows="3" placeholder="Overall inspection notes..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Complete Inspection</button>
+    </form>
+</div>
+
+<div class="section">
+    <h2>Inspection History</h2>
+    {% if inspections %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Vessel</th>
+                <th>Date</th>
+                <th>Inspector</th>
+                <th>Weather</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for insp in inspections %}
+            <tr>
+                <td><a href="{{ url_for('inspection_detail', inspection_id=insp.id) }}">{{ insp.boat_name or 'Unknown' }}</a></td>
+                <td>{{ insp.inspection_date }}</td>
+                <td>{{ insp.inspector_name or '-' }}</td>
+                <td>{{ insp.weather or '-' }}</td>
+                <td><span class="badge badge-{{ insp.overall_status|lower }}">{{ insp.overall_status }}</span></td>
+                <td>
+                    <a href="{{ url_for('inspection_detail', inspection_id=insp.id) }}" class="btn btn-sm">View</a>
+                    <form method="POST" action="{{ url_for('delete_inspection', inspection_id=insp.id) }}" class="inline-form" onsubmit="return confirm('Delete this inspection?')">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No inspections yet.</p>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.querySelector('input[name="inspection_date"]');
+    if (dateInput) dateInput.value = today;
+});
+</script>
+{% endblock %}
