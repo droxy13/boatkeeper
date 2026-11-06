@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Statistics{% endblock %}
+{% block content %}
+<h1>📊 Statistics Dashboard</h1>
+
+<!-- Summary Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number">${{ "%.2f"|format(total_maint_cost) }}</div>
+        <div class="stat-label">Maintenance Cost</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">${{ "%.2f"|format(total_incident_cost) }}</div>
+        <div class="stat-label">Incident Cost</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ maint_status|sum(attribute='count') }}</div>
+        <div class="stat-label">Total Tasks</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ cert_status|sum(attribute='count') }}</div>
+        <div class="stat-label">Certificates</div>
+    </div>
+</div>
+
+<div class="charts-grid">
+    <!-- Maintenance by Status -->
+    <div class="chart-card">
+        <h3>Maintenance by Status</h3>
+        <canvas id="chartMaintStatus"></canvas>
+    </div>
+
+    <!-- Maintenance by Type -->
+    <div class="chart-card">
+        <h3>Maintenance by Type</h3>
+        <canvas id="chartMaintType"></canvas>
+    </div>
+
+    <!-- Inspections over Time -->
+    <div class="chart-card">
+        <h3>Inspections (Last 6 Months)</h3>
+        <canvas id="chartInspections"></canvas>
+    </div>
+
+    <!-- Incidents by Severity -->
+    <div class="chart-card">
+        <h3>Incidents by Severity</h3>
+        <canvas id="chartIncidents"></canvas>
+    </div>
+
+    <!-- Vessel Types -->
+    <div class="chart-card">
+        <h3>Vessel Types</h3>
+        <canvas id="chartVesselTypes"></canvas>
+    </div>
+
+    <!-- Certificates by Status -->
+    <div class="chart-card">
+        <h3>Certificates by Status</h3>
+        <canvas id="chartCertStatus"></canvas>
+    </div>
+</div>
+
+<script>
+// Simple chart drawing using Canvas API
+function drawPieChart(canvasId, labels, data, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const total = data.reduce((a, b) => a + b, 0);
+    if (total === 0) {
+        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#a0aec0';
+        ctx.textAlign = 'center';
+        ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+    
+    canvas.width = 300;
+    canvas.height = 300;
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const radius = 120;
+    let startAngle = -Math.PI / 2;
+    
+    data.forEach((value, i) => {
+        const sliceAngle = (value / total) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+        
+        // Label
+        if (value / total > 0.05) {
+            const midAngle = startAngle + sliceAngle / 2;
+            const labelX = cx + Math.cos(midAngle) * (radius * 0.65);
+            const labelY = cy + Math.sin(midAngle) * (radius * 0.65);
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${Math.round(value/total*100)}%`, labelX, labelY);
+        }
+        
+        startAngle += sliceAngle;
+    });
+    
+    // Legend
+    let legendY = canvas.height - (data.length * 18);
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    data.forEach((value, i) => {
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(10, legendY + i * 18, 12, 12);
+        ctx.fillStyle = '#4a5568';
+        ctx.fillText(`${labels[i]}: ${value}`, 26, legendY + i * 18 + 10);
+    });
+}
+
+function drawBarChart(canvasId, labels, data, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const max = Math.max(...data, 1);
+    
+    canvas.width = 350;
+    canvas.height = 250;
+    const padding = 40;
+    const barWidth = Math.min(40, (canvas.width - padding * 2) / data.length - 5);
+    const chartHeight = canvas.height - padding * 2;
+    
+    // Y axis
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding + (chartHeight / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding, y);
+        ctx.lineTo(canvas.width - padding, y);
+        ctx.stroke();
+        
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#a0aec0';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(max - (max / 4) * i), padding - 5, y + 4);
+    }
+    
+    // Bars
+    data.forEach((value, i) => {
+        const barHeight = (value / max) * chartHeight;
+        const x = padding + 10 + i * (barWidth + 5);
+        const y = padding + chartHeight - barHeight;
+        
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(x, y, barWidth, barHeight);
+        
+        // Value on top
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillStyle = '#4a5568';
+        ctx.textAlign = 'center';
+        ctx.fillText(value, x + barWidth / 2, y - 5);
+        
+        // Label
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#718096';
+        ctx.save();
+        ctx.translate(x + barWidth / 2, canvas.height - 10);
+        ctx.rotate(-Math.PI / 6);
+        ctx.textAlign = 'left';
+        ctx.fillText(labels[i], 0, 0);
+        ctx.restore();
+    });
+}
+
+// Chart colors
+const colors = ['#3182ce', '#38a169', '#d69e2e', '#e53e3e', '#805ad5', '#dd6b20', '#319795', '#d53f8c'];
+
+// Draw charts
+document.addEventListener('DOMContentLoaded', function() {
+    // Maintenance by Status (Pie)
+    drawPieChart('chartMaintStatus',
+        {{ maint_status|map(attribute='status')|tojson }},
+        {{ maint_status|map(attribute='count')|tojson }},
+        ['#e53e3e', '#d69e2e', '#38a169']
+    );
+    
+    // Maintenance by Type (Bar)
+    drawBarChart('chartMaintType',
+        {{ maint_type|map(attribute='maintenance_type')|tojson }},
+        {{ maint_type|map(attribute='count')|tojson }},
+        colors
+    );
+    
+    // Inspections over Time (Bar)
+    drawBarChart('chartInspections',
+        {{ inspections_monthly|map(attribute='month')|tojson }},
+        {{ inspections_monthly|map(attribute='count')|tojson }},
+        ['#3182ce']
+    );
+    
+    // Incidents by Severity (Pie)
+    drawPieChart('chartIncidents',
+        {{ incidents_severity|map(attribute='severity')|tojson }},
+        {{ incidents_severity|map(attribute='count')|tojson }},
+        ['#38a169', '#d69e2e', '#dd6b20', '#e53e3e']
+    );
+    
+    // Vessel Types (Pie)
+    drawPieChart('chartVesselTypes',
+        {{ vessel_types|map(attribute='type')|tojson }},
+        {{ vessel_types|map(attribute='count')|tojson }},
+        colors
+    );
+    
+    // Certificates by Status (Pie)
+    drawPieChart('chartCertStatus',
+        {{ cert_status|map(attribute='status')|tojson }},
+        {{ cert_status|map(attribute='count')|tojson }},
+        ['#38a169', '#d69e2e', '#e53e3e']
+    );
+});
+</script>
+{% endblock %}

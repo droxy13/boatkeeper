@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Yard Map{% endblock %}
+{% block content %}
+<h1>🗺️ Yard Map</h1>
+
+<div class="yard-map">
+    {% if boats %}
+        {% set ns = namespace(positions={}) %}
+        {% for bd in boats %}
+            {% set pos = bd.boat.mooring_position or 'Unassigned' %}
+            {% if pos not in ns.positions %}
+                {% set _ = ns.positions.update({pos: []}) %}
+            {% endif %}
+            {% set _ = ns.positions[pos].append(bd) %}
+        {% endfor %}
+        
+        {% for position, boat_list in ns.positions.items() %}
+        <div class="yard-position">
+            <h3 class="position-header">{{ position }}</h3>
+            <div class="position-boats">
+                {% for bd in boat_list %}
+                <a href="{{ url_for('boats') }}" class="boat-card status-{{ bd.status }}">
+                    <div class="boat-card-header">
+                        <span class="boat-name">{{ bd.boat.name }}</span>
+                        <span class="status-dot status-{{ bd.status }}"></span>
+                    </div>
+                    {% if bd.boat.type %}<span class="boat-type">{{ bd.boat.type }}</span>{% endif %}
+                    {% if bd.boat.length_m %}<span class="boat-length">{{ bd.boat.length_m }}m</span>{% endif %}
+                    <div class="boat-stats">
+                        {% if bd.maint_needed > 0 %}
+                        <span class="stat-badge warning">🔧 {{ bd.maint_needed }}</span>
+                        {% endif %}
+                        {% if bd.maint_progress > 0 %}
+                        <span class="stat-badge info">🔨 {{ bd.maint_progress }}</span>
+                        {% endif %}
+                        {% if bd.incidents_open > 0 %}
+                        <span class="stat-badge danger">⚠️ {{ bd.incidents_open }}</span>
+                        {% endif %}
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">
+            <p>No vessels in the yard yet.</p>
+            <a href="{{ url_for('boats') }}" class="btn btn-primary">Add a Vessel</a>
+        </div>
+    {% endif %}
+</div>
+
+<div class="yard-legend">
+    <h3>Legend</h3>
+    <div class="legend-items">
+        <span class="legend-item"><span class="status-dot status-ok"></span> OK</span>
+        <span class="legend-item"><span class="status-dot status-warning"></span> Maintenance Needed</span>
+        <span class="legend-item"><span class="status-dot status-critical"></span> Open Incidents</span>
+    </div>
+</div>
+{% endblock %}

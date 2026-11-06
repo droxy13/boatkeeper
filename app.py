@@ -4,7 +4,9 @@ Complete vessel inspection, maintenance, and owner communication platform.
 """
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+import csv
+import io
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -1119,6 +1121,164 @@ def delete_planning(doc_id):
     flash('Plan deleted.', 'success')
     return redirect(url_for('index'))
 
+# ── Yard Map Route ────────────────────────────────────────────────────
+
+@app.route('/yard-map')
+@login_required
+def yard_map():
+    db = get_db()
+    boats = db.execute("SELECT * FROM boats ORDER BY mooring_position, name").fetchall()
+    
+    # Get maintenance and incident counts per boat
+    boat_ids = [b['id'] for b in boats]
+    boat_data = []
+    for boat in boats:
+        if boat['id'] in boat_ids:
+            maint_needed = db.execute(
+                "SELECT COUNT(*) as c FROM maintenance WHERE boat_id = ? AND status = 'Needed'",
+                (boat['id'],)
+            ).fetchone()['c']
+            maint_progress = db.execute(
+                "SELECT COUNT(*) as c FROM maintenance WHERE boat_id = ? AND status = 'In Progress'",
+                (boat['id'],)
+            ).fetchone()['c']
+            incidents_open = db.execute(
+                "SELECT COUNT(*) as c FROM incidents WHERE boat_id = ? AND status = 'Open'",
+                (boat['id'],)
+            ).fetchone()['c']
+            
+            # Determine status color
+            if incidents_open > 0:
+                status = 'critical'
+            elif maint_needed > 0:
+                status = 'warning'
+            else:
+                status = 'ok'
+            
+            boat_data.append({
+                'boat': dict(boat),
+                'maint_needed': maint_needed,
+                'maint_progress': maint_progress,
+                'incidents_open': incidents_open,
+                'status': status
+            })
+    
+    db.close()
+    return render_template('yard_map.html', boats=boat_data)
+
+# ── Statistics Route ──────────────────────────────────────────────────
+
+@app.route('/statistics')
+@login_required
+def statistics():
+    db = get_db()
+    
+    # Maintenance by status
+    maint_status = db.execute(
+        "SELECT status, COUNT(*) as count FROM maintenance GROUP BY status"
+    ).fetchall()
+    
+    # Maintenance by type
+    maint_type = db.execute(
+        "SELECT maintenance_type, COUNT(*) as count FROM maintenance GROUP BY maintenance_type"
+    ).fetchall()
+    
+    # Inspections over time (last 6 months)
+    inspections_monthly = db.execute(
+        "SELECT strftime('%Y-%m', inspection_date) as month, COUNT(*) as count "
+        "FROM inspections WHERE inspection_date >= date('now', '-6 months') "
+        "GROUP BY month ORDER BY month"
+    ).fetchall()
+    
+    # Incidents by severity
+    incidents_severity = db.execute(
+        "SELECT severity, COUNT(*) as count FROM incidents GROUP BY severity"
+    ).fetchall()
+    
+    # Total costs
+    total_maint_cost = db.execute(
+        "SELECT COALESCE(SUM(cost), 0) as total FROM maintenance"
+    ).fetchone()['total']
+    total_incident_cost = db.execute(
+        "SELECT COALESCE(SUM(cost), 0) as total FROM incidents"
+    ).fetchone()['total']
+    
+    # Vessel types
+    vessel_types = db.execute(
+        "SELECT type, COUNT(*) as count FROM boats WHERE type != '' GROUP BY type"
+    ).fetchall()
+    
+    # Certificates by status
+    cert_status = db.execute(
+        "SELECT status, COUNT(*) as count FROM certificates GROUP BY status"
+    ).fetchall()
+    
+    db.close()
+    
+    return render_template('statistics.html',
+                          maint_status=maint_status,
+                          maint_type=maint_type,
+                          inspections_monthly=inspections_monthly,
+                          incidents_severity=incidents_severity,
+                          total_maint_cost=total_maint_cost,
+                          total_incident_cost=total_incident_cost,
+                          vessel_types=vessel_types,
+                          cert_status=cert_status)
+
+# ── Export Routes ─────────────────────────────────────────────────────
+
+@app.route('/export/json')
+@login_required
+def export_json():
+    """Export all data as JSON for backup."""
+    db = get_db()
+    data = {
+        'boats': [dict(r) for r in db.execute("SELECT * FROM boats").fetchall()],
+        'owners': [dict(r) for r in db.execute("SELECT * FROM owners").fetchall()],
+        'maintenance': [dict(r) for r in db.execute("SELECT * FROM maintenance").fetchall()],
+        'inspections': [dict(r) for r in db.execute("SELECT * FROM inspections").fetchall()],
+        'inspection_items': [dict(r) for r in db.execute("SELECT * FROM inspection_items").fetchall()],
+        'incidents': [dict(r) for r in db.execute("SELECT * FROM incidents").fetchall()],
+        'certificates': [dict(r) for r in db.execute("SELECT * FROM certificates").fetchall()],
+        'engine_logs': [dict(r) for r in db.execute("SELECT * FROM engine_logs").fetchall()],
+        'reports': [dict(r) for r in db.execute("SELECT * FROM reports").fetchall()],
+        'planning_docs': [dict(r) for r in db.execute("SELECT * FROM planning_docs").fetchall()],
+        'alerts': [dict(r) for r in db.execute("SELECT * FROM alerts").fetchall()],
+    }
+    db.close()
+    
+    response = make_response(json.dumps(data, indent=2, default=str))
+    response.headers['Content-Type'] = 'application/json'
+    response.headers['Content-Disposition'] = f'attachment; filename=boatkeeper_backup_{datetime.now().strftime("%Y%m%d")}.json'
+    return response
+
+@app.route('/export/csv/<string:table_name>')
+@login_required
+def export_csv(table_name):
+    """Export a specific table as CSV."""
+    allowed_tables = ['boats', 'owners', 'maintenance', 'inspections', 'inspection_items',
+                      'incidents', 'certificates', 'engine_logs', 'reports', 'planning_docs']
+    
+    if table_name not in allowed_tables:
+        flash('Invalid table name.', 'error')
+        return redirect(url_for('index'))
+    
+    db = get_db()
+    rows = db.execute(f"SELECT * FROM {table_name}").fetchall()
+    columns = [description[0] for description in db.cursor().description]
+    db.close()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(columns)
+    for row in rows:
+        writer.writerow(list(row))
+    
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = f'attachment; filename=boatkeeper_{table_name}_{datetime.now().strftime("%Y%m%d")}.csv'
+    return response
+
 # ── API Routes (for AJAX) ─────────────────────────────────────────────
 
 @app.route('/api/boats')
@@ -1140,6 +1300,29 @@ def api_unread_alerts():
     ).fetchall()
     db.close()
     return jsonify([dict(a) for a in alerts])
+
+@app.route('/api/alerts/count')
+@login_required
+def api_alerts_count():
+    """Get count of unread alerts for the bell badge."""
+    db = get_db()
+    
+    # Count unread alerts
+    unread = db.execute("SELECT COUNT(*) as c FROM alerts WHERE is_read = 0").fetchone()['c']
+    
+    # Count expiring certificates (within 30 days)
+    expiring = db.execute(
+        "SELECT COUNT(*) as c FROM certificates WHERE expiry_date IS NOT NULL "
+        "AND expiry_date != '' AND expiry_date <= date('now', '+30 days')"
+    ).fetchone()['c']
+    
+    # Count open incidents
+    open_incidents = db.execute(
+        "SELECT COUNT(*) as c FROM incidents WHERE status = 'Open'"
+    ).fetchone()['c']
+    
+    db.close()
+    return jsonify({'unread': unread, 'expiring': expiring, 'open_incidents': open_incidents, 'total': unread + expiring + open_incidents})
 
 # ── Initialize and Run ────────────────────────────────────────────────
 

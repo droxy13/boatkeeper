@@ -8,25 +8,63 @@
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">
-            <a href="{{ url_for('index') }}">⚓ BoatKeeper</a>
-        </div>
-        <div class="nav-links">
-            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Dashboard</a>
-            <a href="{{ url_for('boats') }}" class="{% if request.endpoint == 'boats' %}active{% endif %}">Vessels</a>
-            <a href="{{ url_for('inspections') }}" class="{% if 'inspection' in (request.endpoint or '') %}active{% endif %}">Inspections</a>
-            <a href="{{ url_for('maintenance') }}" class="{% if request.endpoint == 'maintenance' %}active{% endif %}">Maintenance</a>
-            <a href="{{ url_for('engine_logs') }}" class="{% if request.endpoint == 'engine_logs' %}active{% endif %}">Engine Logs</a>
-            <a href="{{ url_for('incidents') }}" class="{% if request.endpoint == 'incidents' %}active{% endif %}">Incidents</a>
-            <a href="{{ url_for('certificates') }}" class="{% if request.endpoint == 'certificates' %}active{% endif %}">Certificates</a>
-            <a href="{{ url_for('reports') }}" class="{% if request.endpoint == 'reports' %}active{% endif %}">Reports</a>
-            <a href="{{ url_for('planning') }}" class="{% if request.endpoint == 'planning' %}active{% endif %}">Planning</a>
-            {% if current_user.is_authenticated and current_user.role == 'admin' %}
-            <a href="{{ url_for('admin_panel') }}" class="{% if request.endpoint == 'admin_panel' %}active{% endif %}">Admin</a>
-            {% endif %}
-            <a href="{{ url_for('logout') }}" class="btn-logout">Logout</a>
+        <div class="navbar-inner">
+            <div class="nav-brand">
+                <a href="{{ url_for('index') }}">⚓ BoatKeeper</a>
+            </div>
+            <div class="nav-links">
+                <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Dashboard</a>
+                <a href="{{ url_for('boats') }}" class="{% if request.endpoint == 'boats' %}active{% endif %}">Vessels</a>
+                <a href="{{ url_for('inspections') }}" class="{% if 'inspection' in (request.endpoint or '') %}active{% endif %}">Inspections</a>
+                <a href="{{ url_for('maintenance') }}" class="{% if request.endpoint == 'maintenance' %}active{% endif %}">Maintenance</a>
+                <a href="{{ url_for('engine_logs') }}" class="{% if request.endpoint == 'engine_logs' %}active{% endif %}">Engine Logs</a>
+                <a href="{{ url_for('incidents') }}" class="{% if request.endpoint == 'incidents' %}active{% endif %}">Incidents</a>
+                <a href="{{ url_for('certificates') }}" class="{% if request.endpoint == 'certificates' %}active{% endif %}">Certificates</a>
+                <a href="{{ url_for('reports') }}" class="{% if request.endpoint == 'reports' %}active{% endif %}">Reports</a>
+                <a href="{{ url_for('planning') }}" class="{% if request.endpoint == 'planning' %}active{% endif %}">Planning</a>
+                <a href="{{ url_for('yard_map') }}" class="{% if request.endpoint == 'yard_map' %}active{% endif %}">Yard Map</a>
+                <a href="{{ url_for('statistics') }}" class="{% if request.endpoint == 'statistics' %}active{% endif %}">Statistics</a>
+                {% if current_user.is_authenticated and current_user.role == 'admin' %}
+                <a href="{{ url_for('admin_panel') }}" class="{% if request.endpoint == 'admin_panel' %}active{% endif %}">Admin</a>
+                {% endif %}
+            </div>
+            <div class="nav-right">
+                <!-- Alerts Bell -->
+                <button class="alerts-btn" onclick="toggleAlertsPanel()" title="View alerts" id="alertsBtn">🔔 <span class="alerts-badge" id="alertsBadge" style="display:none;">0</span></button>
+                
+                <!-- Export Dropdown -->
+                <div class="export-dropdown">
+                    <button class="export-btn" onclick="toggleExportMenu()" title="Export data">📥 Export</button>
+                    <div class="export-menu" id="exportMenu">
+                        <div class="export-menu-label">Full Backup</div>
+                        <a href="{{ url_for('export_json') }}" class="export-menu-item">📋 Download JSON Backup</a>
+                        <div class="export-menu-label" style="margin-top:8px;">Export as CSV</div>
+                        <a href="{{ url_for('export_csv', table_name='boats') }}" class="export-menu-item">🚤 Vessels</a>
+                        <a href="{{ url_for('export_csv', table_name='maintenance') }}" class="export-menu-item">🔧 Maintenance</a>
+                        <a href="{{ url_for('export_csv', table_name='inspections') }}" class="export-menu-item">📋 Inspections</a>
+                        <a href="{{ url_for('export_csv', table_name='incidents') }}" class="export-menu-item">⚠️ Incidents</a>
+                        <a href="{{ url_for('export_csv', table_name='certificates') }}" class="export-menu-item">📜 Certificates</a>
+                        <a href="{{ url_for('export_csv', table_name='engine_logs') }}" class="export-menu-item">⏱️ Engine Logs</a>
+                        <a href="{{ url_for('export_csv', table_name='reports') }}" class="export-menu-item">📄 Reports</a>
+                        <a href="{{ url_for('export_csv', table_name='planning_docs') }}" class="export-menu-item">📝 Planning</a>
+                    </div>
+                </div>
+                
+                <a href="{{ url_for('logout') }}" class="btn-logout">Logout</a>
+            </div>
         </div>
     </nav>
+
+    <!-- Alerts Panel -->
+    <div class="alerts-panel" id="alertsPanel">
+        <div class="alerts-panel-header">
+            <h3>🔔 Alerts & Reminders</h3>
+            <button class="alerts-close" onclick="toggleAlertsPanel()">✕</button>
+        </div>
+        <div class="alerts-panel-body" id="alertsPanelBody">
+            <p class="alerts-loading">Loading alerts...</p>
+        </div>
+    </div>
 
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -45,5 +83,92 @@
     <footer class="footer">
         <p>BoatKeeper — Marina Caretaker Management System</p>
     </footer>
+
+    <script>
+    // Export menu toggle
+    function toggleExportMenu() {
+        const menu = document.getElementById('exportMenu');
+        const wasOpen = menu.classList.contains('show');
+        closeExportMenu();
+        if (!wasOpen) {
+            menu.classList.add('show');
+            setTimeout(() => {
+                document.addEventListener('click', closeExportMenuOutside);
+            }, 0);
+        }
+    }
+    
+    function closeExportMenu() {
+        const menu = document.getElementById('exportMenu');
+        menu.classList.remove('show');
+        document.removeEventListener('click', closeExportMenuOutside);
+    }
+    
+    function closeExportMenuOutside(e) {
+        const dropdown = document.querySelector('.export-dropdown');
+        if (!dropdown.contains(e.target)) {
+            closeExportMenu();
+        }
+    }
+    
+    // Alerts panel toggle
+    function toggleAlertsPanel() {
+        const panel = document.getElementById('alertsPanel');
+        panel.classList.toggle('show');
+        if (panel.classList.contains('show')) {
+            loadAlerts();
+        }
+    }
+    
+    function loadAlerts() {
+        fetch('/api/alerts/unread')
+            .then(r => r.json())
+            .then(alerts => {
+                const body = document.getElementById('alertsPanelBody');
+                if (alerts.length === 0) {
+                    body.innerHTML = '<p class="alerts-empty">No new alerts</p>';
+                } else {
+                    body.innerHTML = alerts.map(a => `
+                        <div class="alert-item">
+                            <div>
+                                <strong>${a.boat_name || 'Unknown'}</strong>
+                                <p>${a.title}</p>
+                                <small>${a.alert_date}</small>
+                            </div>
+                            <form method="POST" action="/alerts/mark-read/${a.id}" style="margin:0;">
+                                <button type="submit" class="btn btn-sm">Mark read</button>
+                            </form>
+                        </div>
+                    `).join('');
+                }
+            });
+        
+        // Update badge
+        fetch('/api/alerts/count')
+            .then(r => r.json())
+            .then(data => {
+                const badge = document.getElementById('alertsBadge');
+                if (data.total > 0) {
+                    badge.style.display = 'inline';
+                    badge.textContent = data.total;
+                } else {
+                    badge.style.display = 'none';
+                }
+            });
+    }
+    
+    // Load alert count on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch('/api/alerts/count')
+            .then(r => r.json())
+            .then(data => {
+                const badge = document.getElementById('alertsBadge');
+                if (data.total > 0) {
+                    badge.style.display = 'inline';
+                    badge.textContent = data.total;
+                }
+            });
+    });
+    </script>
 </body>
 </html>
