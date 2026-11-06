@@ -525,7 +525,28 @@ def _create_tables_postgres(db):
 def init_db():
     """Initialize the database with all tables and default admin user."""
     db = get_db()
-    
+
+    # Drop all old tables to ensure clean schema (PostgreSQL)
+    if USE_POSTGRES:
+        cur = get_cursor(db)
+        cur.execute("""
+            SELECT 'DROP TABLE IF EXISTS "' || tablename || '" CASCADE'
+            FROM pg_tables
+            WHERE schemaname = 'public'
+        """)
+        for (drop_stmt,) in cur.fetchall():
+            cur.execute(drop_stmt)
+        db.commit()
+        cur.close()
+    else:
+        # Drop all old tables (SQLite)
+        cur = db.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        for (table,) in cur.fetchall():
+            cur.execute(f"DROP TABLE IF EXISTS {table}")
+        db.commit()
+        cur.close()
+
     # Create tables using the appropriate syntax
     if USE_POSTGRES:
         _create_tables_postgres(db)
