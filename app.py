@@ -36,7 +36,7 @@ login_manager.login_message = 'Please log in to access BoatKeeper.'
 
 class PublicUser(UserMixin):
     """Auto-login user – no password needed."""
-    id = '1'
+    id = 1
     username = 'public'
     role = 'admin'
     full_name = 'Public User'
@@ -61,28 +61,36 @@ def auto_login():
 
 # ── Database Helpers ──────────────────────────────────────────────────
 
+class PGConnection:
+    """Wrapper around psycopg2 connection to make it behave like sqlite3."""
+    def __init__(self, conn):
+        self._conn = conn
+    
+    def execute(self, sql, params=None):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if params and '?' in sql:
+            sql = sql.replace('?', '%s')
+        cur.execute(sql, params)
+        return cur
+    
+    def cursor(self, **kwargs):
+        return self._conn.cursor(**kwargs)
+    
+    def commit(self):
+        self._conn.commit()
+    
+    def close(self):
+        self._conn.close()
+    
+    def executescript(self, sql):
+        """Not used for PostgreSQL, but kept for compatibility."""
+        pass
+
 def get_db():
     """Get a database connection (PostgreSQL or SQLite)."""
     if USE_POSTGRES:
         conn = psycopg2.connect(DATABASE_URL)
-        # Wrap execute to use RealDictCursor by default
-        original_execute = conn.cursor
-        def wrapped_cursor(*args, **kwargs):
-            if 'cursor_factory' not in kwargs:
-                kwargs['cursor_factory'] = psycopg2.extras.RealDictCursor
-            return original_execute(*args, **kwargs)
-        conn.cursor = wrapped_cursor
-        # Create a execute method that uses the wrapped cursor
-        def wrapped_execute(sql, params=None):
-            cur = conn.cursor()
-            # Convert ? placeholders to %s for PostgreSQL
-            if params and '?' in sql:
-                # Replace ? with %s for psycopg2 compatibility
-                sql = sql.replace('?', '%s')
-            cur.execute(sql, params)
-            return cur
-        conn.execute = wrapped_execute
-        return conn
+        return PGConnection(conn)
     else:
         conn = sqlite3.connect(app.config['DATABASE'])
         conn.row_factory = sqlite3.Row
