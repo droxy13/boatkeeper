@@ -298,7 +298,8 @@ def load_user(user_id):
     row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     db.close()
     if row:
-        return User(row['id'], row['username'], row['role'], row['full_name'], row.get('email', ''), row.get('phone', ''))
+        d = dict(row)
+        return User(d['id'], d['username'], d['role'], d['full_name'], d.get('email', ''), d.get('phone', ''))
     return None
 
 def admin_required(f):
@@ -326,9 +327,10 @@ def login():
         db.close()
 
         if row and check_password_hash(row['password_hash'], password):
-            user = User(row['id'], row['username'], row['role'], row['full_name'], row.get('email', ''), row.get('phone', ''))
+            d = dict(row)
+            user = User(d['id'], d['username'], d['role'], d['full_name'], d.get('email', ''), d.get('phone', ''))
             login_user(user)
-            flash(f"Welcome back, {row['full_name'] or username}!", 'success')
+            flash(f"Welcome back, {d['full_name'] or username}!", 'success')
             return redirect(url_for('index'))
         else:
             flash('Invalid username or password.', 'error')
