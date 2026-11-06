@@ -14,7 +14,7 @@ import json
 
 # Determine database type: PostgreSQL on Render, SQLite locally
 DATABASE_URL = os.environ.get('DATABASE_URL')
-USE_POSTGRES = DATABASE_URL and DATABASE_URL.startswith('postgres')
+USE_POSTGRES = DATABASE_URL and ('postgres' in DATABASE_URL[:15])
 
 if USE_POSTGRES:
     import psycopg2
