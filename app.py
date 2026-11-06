@@ -3,7 +3,6 @@ BoatKeeper — Marina Caretaker Management System
 Complete vessel inspection, maintenance, and owner communication platform.
 """
 import os
-import sqlite3
 import csv
 import io
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
@@ -13,9 +12,20 @@ from datetime import datetime, timedelta
 from functools import wraps
 import json
 
+# Determine database type: PostgreSQL on Render, SQLite locally
+DATABASE_URL = os.environ.get('DATABASE_URL')
+USE_POSTGRES = DATABASE_URL and DATABASE_URL.startswith('postgres')
+
+if USE_POSTGRES:
+    import psycopg2
+    import psycopg2.extras
+else:
+    import sqlite3
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'boatkeeper-secret-key-change-in-production')
-app.config['DATABASE'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'boatkeeper.db')
+if not USE_POSTGRES:
+    app.config['DATABASE'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'boatkeeper.db')
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -24,17 +34,63 @@ login_manager.login_message = 'Please log in to access BoatKeeper.'
 # ── Database Helpers ──────────────────────────────────────────────────
 
 def get_db():
-    """Get a database connection."""
-    conn = sqlite3.connect(app.config['DATABASE'])
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    """Get a database connection (PostgreSQL or SQLite)."""
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        # Wrap execute to use RealDictCursor by default
+        original_execute = conn.cursor
+        def wrapped_cursor(*args, **kwargs):
+            if 'cursor_factory' not in kwargs:
+                kwargs['cursor_factory'] = psycopg2.extras.RealDictCursor
+            return original_execute(*args, **kwargs)
+        conn.cursor = wrapped_cursor
+        # Create a execute method that uses the wrapped cursor
+        def wrapped_execute(sql, params=None):
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            return cur
+        conn.execute = wrapped_execute
+        return conn
+    else:
+        conn = sqlite3.connect(app.config['DATABASE'])
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
+def get_cursor(db):
+    """Get a cursor with dict-like row support."""
+    if USE_POSTGRES:
+        return db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    else:
+        return db.cursor()
+
+def close_db(conn):
+    """Close a database connection."""
+    if conn:
+        conn.close()
+
+def row_to_dict(row):
+    """Convert a row from either PostgreSQL or SQLite to a dict."""
+    if hasattr(row, 'keys'):
+        return dict(row)
+    return row
+
+def _get_columns(db, table):
+    """Get column names for a table (works for both PostgreSQL and SQLite)."""
+    if USE_POSTGRES:
+        cols = db.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = %s
+        """, (table,)).fetchall()
+        return [c[0] for c in cols]
+    else:
+        info = db.execute(f"PRAGMA table_info({table})").fetchall()
+        return [row['name'] for row in info]
 
 def _add_column_if_missing(db, table, column, col_def):
     """Add a column to a table only if it doesn't already exist."""
     try:
-        info = db.execute(f"PRAGMA table_info({table})").fetchall()
-        columns = [row['name'] for row in info]
+        columns = _get_columns(db, table)
         if column not in columns:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
             db.commit()
@@ -42,35 +98,26 @@ def _add_column_if_missing(db, table, column, col_def):
     except Exception as e:
         print(f"Migration warning for {table}.{column}: {e}")
 
-def init_db():
-    """Initialize the database with all tables and default admin user."""
-    db = get_db()
-    
-    # Always drop existing tables to ensure clean schema
-    # Drop in reverse dependency order to avoid foreign key issues
+def _table_exists(db, table):
+    """Check if a table exists (works for both PostgreSQL and SQLite)."""
     try:
-        tables = [r['name'] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        if tables:
-            print(f"Found existing tables: {tables} - dropping for clean schema...")
-            # Drop dependents first, then parents
-            drop_order = [
-                'inspection_items', 'maintenance', 'inspections', 'incidents',
-                'certificates', 'engine_logs', 'reports', 'alerts', 'owners',
-                'planning_docs', 'boats', 'users'
-            ]
-            for t in drop_order:
-                if t in tables:
-                    db.execute(f"DROP TABLE IF EXISTS {t}")
-            for t in tables:
-                if t not in drop_order:
-                    db.execute(f"DROP TABLE IF EXISTS {t}")
-            db.commit()
-    except Exception as e:
-        print(f"Drop tables warning: {e}")
-    
-    # Create all tables
+        if USE_POSTGRES:
+            result = db.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = %s
+                )
+            """, (table,)).fetchone()
+            return result[0]
+        else:
+            result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+            return result is not None
+    except Exception:
+        return False
+
+def _create_tables_sqlite(db):
+    """Create all tables using SQLite syntax."""
     db.executescript('''
-        -- Users table
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
@@ -81,8 +128,6 @@ def init_db():
             phone TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-
-        -- Boats/Vessels table
         CREATE TABLE IF NOT EXISTS boats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -98,8 +143,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
-
-        -- Owners table
         CREATE TABLE IF NOT EXISTS owners (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -111,8 +154,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE
         );
-
-        -- Maintenance table (enhanced)
         CREATE TABLE IF NOT EXISTS maintenance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -136,8 +177,6 @@ def init_db():
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
-
-        -- Planning documents
         CREATE TABLE IF NOT EXISTS planning_docs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -153,8 +192,6 @@ def init_db():
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
-
-        -- Inspections (checklist records)
         CREATE TABLE IF NOT EXISTS inspections (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -167,8 +204,6 @@ def init_db():
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
             FOREIGN KEY (inspector_id) REFERENCES users(id)
         );
-
-        -- Inspection items (individual checklist items)
         CREATE TABLE IF NOT EXISTS inspection_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             inspection_id INTEGER NOT NULL,
@@ -181,8 +216,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE
         );
-
-        -- Incidents and damage reports
         CREATE TABLE IF NOT EXISTS incidents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -200,8 +233,6 @@ def init_db():
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
             FOREIGN KEY (reported_by) REFERENCES users(id)
         );
-
-        -- Certificates and expiration tracking
         CREATE TABLE IF NOT EXISTS certificates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -217,8 +248,6 @@ def init_db():
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
-
-        -- Alerts and reminders
         CREATE TABLE IF NOT EXISTS alerts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -234,8 +263,6 @@ def init_db():
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
-
-        -- Reports (owner communication)
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -249,8 +276,6 @@ def init_db():
             FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
-
-        -- Engine logs
         CREATE TABLE IF NOT EXISTS engine_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             boat_id INTEGER NOT NULL,
@@ -264,7 +289,213 @@ def init_db():
         );
     ''')
 
-    # ── Schema migration: add missing columns to existing tables ──
+def _create_tables_postgres(db):
+    """Create all tables using PostgreSQL syntax."""
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            role VARCHAR(50) NOT NULL DEFAULT 'employee',
+            full_name VARCHAR(255),
+            email VARCHAR(255) DEFAULT '',
+            phone VARCHAR(50) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS boats (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            model VARCHAR(255) DEFAULT '',
+            brand VARCHAR(255) DEFAULT '',
+            year INTEGER DEFAULT 0,
+            hull_number VARCHAR(100) DEFAULT '',
+            length_m REAL DEFAULT 0,
+            type VARCHAR(100) DEFAULT '',
+            mooring_position VARCHAR(100) DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS owners (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            owner_name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) DEFAULT '',
+            phone VARCHAR(50) DEFAULT '',
+            address TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS maintenance (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            maintenance_type VARCHAR(100) DEFAULT 'General',
+            category VARCHAR(100) DEFAULT '',
+            status VARCHAR(50) DEFAULT 'Needed',
+            priority VARCHAR(50) DEFAULT 'Normal',
+            due_date VARCHAR(50),
+            started_date VARCHAR(50),
+            completed_date VARCHAR(50),
+            notes TEXT DEFAULT '',
+            cost REAL DEFAULT 0.0,
+            engine_hours REAL DEFAULT 0,
+            fluid_level VARCHAR(255) DEFAULT '',
+            filter_condition VARCHAR(255) DEFAULT '',
+            battery_status VARCHAR(255) DEFAULT '',
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS planning_docs (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            description TEXT DEFAULT '',
+            boat_id INTEGER,
+            planned_start VARCHAR(50),
+            planned_end VARCHAR(50),
+            status VARCHAR(50) DEFAULT 'Draft',
+            notes TEXT DEFAULT '',
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS inspections (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            inspection_date VARCHAR(50) NOT NULL,
+            inspector_id INTEGER,
+            weather VARCHAR(255) DEFAULT '',
+            overall_status VARCHAR(50) DEFAULT 'Pass',
+            notes TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (inspector_id) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS inspection_items (
+            id SERIAL PRIMARY KEY,
+            inspection_id INTEGER NOT NULL,
+            category VARCHAR(255) NOT NULL,
+            item_name VARCHAR(255) NOT NULL,
+            item_description TEXT DEFAULT '',
+            status VARCHAR(50) DEFAULT 'Pending',
+            notes TEXT DEFAULT '',
+            photo_path VARCHAR(255) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS incidents (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            incident_type VARCHAR(100) DEFAULT 'Damage',
+            severity VARCHAR(50) DEFAULT 'Low',
+            description TEXT NOT NULL,
+            incident_date VARCHAR(50) NOT NULL,
+            status VARCHAR(50) DEFAULT 'Open',
+            notes TEXT DEFAULT '',
+            photo_path VARCHAR(255) DEFAULT '',
+            cost REAL DEFAULT 0.0,
+            reported_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (reported_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS certificates (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            cert_type VARCHAR(100) NOT NULL,
+            cert_name VARCHAR(255) NOT NULL,
+            issue_date VARCHAR(50),
+            expiry_date VARCHAR(50),
+            status VARCHAR(50) DEFAULT 'Valid',
+            notes TEXT DEFAULT '',
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS alerts (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            alert_type VARCHAR(100) DEFAULT 'Maintenance',
+            title VARCHAR(255) NOT NULL,
+            description TEXT DEFAULT '',
+            alert_date VARCHAR(50) NOT NULL,
+            is_read INTEGER DEFAULT 0,
+            related_id INTEGER,
+            related_table VARCHAR(100) DEFAULT '',
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS reports (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            report_type VARCHAR(100) DEFAULT 'Status',
+            title VARCHAR(255) NOT NULL,
+            content TEXT DEFAULT '',
+            report_date VARCHAR(50) NOT NULL,
+            sent_to_owner INTEGER DEFAULT 0,
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS engine_logs (
+            id SERIAL PRIMARY KEY,
+            boat_id INTEGER NOT NULL,
+            log_date VARCHAR(50) NOT NULL,
+            total_hours REAL NOT NULL,
+            notes TEXT DEFAULT '',
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (boat_id) REFERENCES boats(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    '''); db.commit()
+
+def init_db():
+    """Initialize the database with all tables and default admin user."""
+    db = get_db()
+    
+    # Create tables using the appropriate syntax
+    if USE_POSTGRES:
+        _create_tables_postgres(db)
+    else:
+        _create_tables_sqlite(db)
+    
+    # Schema migration: add missing columns
     _add_column_if_missing(db, 'boats', 'model', "TEXT DEFAULT ''")
     _add_column_if_missing(db, 'boats', 'brand', "TEXT DEFAULT ''")
     _add_column_if_missing(db, 'boats', 'year', "INTEGER DEFAULT 0")
@@ -1275,11 +1506,18 @@ def statistics():
     ).fetchall()]
     
     # Inspections over time (last 6 months)
-    inspections_monthly = [dict(r) for r in db.execute(
-        "SELECT strftime('%Y-%m', inspection_date) as month, COUNT(*) as count "
-        "FROM inspections WHERE inspection_date >= date('now', '-6 months') "
-        "GROUP BY month ORDER BY month"
-    ).fetchall()]
+    if USE_POSTGRES:
+        inspections_monthly = [dict(r) for r in db.execute(
+            "SELECT TO_CHAR(inspection_date::date, 'YYYY-MM') as month, COUNT(*) as count "
+            "FROM inspections WHERE inspection_date::date >= CURRENT_DATE - INTERVAL '6 months' "
+            "GROUP BY month ORDER BY month"
+        ).fetchall()]
+    else:
+        inspections_monthly = [dict(r) for r in db.execute(
+            "SELECT strftime('%Y-%m', inspection_date) as month, COUNT(*) as count "
+            "FROM inspections WHERE inspection_date >= date('now', '-6 months') "
+            "GROUP BY month ORDER BY month"
+        ).fetchall()]
     
     # Incidents by severity
     incidents_severity = [dict(r) for r in db.execute(
@@ -1368,9 +1606,17 @@ def export_csv(table_name):
         return redirect(url_for('index'))
     
     db = get_db()
-    cursor = db.execute(f"SELECT * FROM {table_name}")
-    columns = [description[0] for description in cursor.description]
-    rows = cursor.fetchall()
+    if USE_POSTGRES:
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(f"SELECT * FROM {table_name}")
+        columns = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+        cur.close()
+        db.commit()
+    else:
+        cur = db.execute(f"SELECT * FROM {table_name}")
+        columns = [description[0] for description in cur.description]
+        rows = cur.fetchall()
     db.close()
     
     output = io.StringIO()
