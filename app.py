@@ -46,19 +46,17 @@ def init_db():
     """Initialize the database with all tables and default admin user."""
     db = get_db()
     
-    # Check if database needs full reset (old incompatible schema)
+    # Always drop existing tables to ensure clean schema
+    # This is safe because the database is ephemeral on Render
     try:
         tables = [r['name'] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        if 'maintenance' in tables:
-            cols = [r['name'] for r in db.execute("PRAGMA table_info(maintenance)").fetchall()]
-            if 'boat_id' not in cols:
-                # Old schema detected - drop all tables and recreate fresh
-                print("Detected old database schema - recreating fresh...")
-                for table in tables:
-                    db.execute(f"DROP TABLE IF EXISTS {table}")
-                db.commit()
+        if tables:
+            print(f"Found existing tables: {tables} - dropping for clean schema...")
+            for table in tables:
+                db.execute(f"DROP TABLE IF EXISTS {table}")
+            db.commit()
     except Exception as e:
-        print(f"Schema check warning: {e}")
+        print(f"Drop tables warning: {e}")
     
     db.executescript('''
         -- Users table
