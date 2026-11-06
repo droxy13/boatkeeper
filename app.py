@@ -47,17 +47,28 @@ def init_db():
     db = get_db()
     
     # Always drop existing tables to ensure clean schema
-    # This is safe because the database is ephemeral on Render
+    # Drop in reverse dependency order to avoid foreign key issues
     try:
         tables = [r['name'] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         if tables:
             print(f"Found existing tables: {tables} - dropping for clean schema...")
-            for table in tables:
-                db.execute(f"DROP TABLE IF EXISTS {table}")
+            # Drop dependents first, then parents
+            drop_order = [
+                'inspection_items', 'maintenance', 'inspections', 'incidents',
+                'certificates', 'engine_logs', 'reports', 'alerts', 'owners',
+                'planning_docs', 'boats', 'users'
+            ]
+            for t in drop_order:
+                if t in tables:
+                    db.execute(f"DROP TABLE IF EXISTS {t}")
+            for t in tables:
+                if t not in drop_order:
+                    db.execute(f"DROP TABLE IF EXISTS {t}")
             db.commit()
     except Exception as e:
         print(f"Drop tables warning: {e}")
     
+    # Create all tables
     db.executescript('''
         -- Users table
         CREATE TABLE IF NOT EXISTS users (
