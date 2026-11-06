@@ -30,6 +30,16 @@ def get_db():
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+def _add_column_if_missing(db, table, column, col_def):
+    """Add a column to a table only if it doesn't already exist."""
+    try:
+        info = db.execute(f"PRAGMA table_info({table})").fetchall()
+        columns = [row['name'] for row in info]
+        if column not in columns:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+    except Exception:
+        pass
+
 def init_db():
     """Initialize the database with all tables and default admin user."""
     db = get_db()
@@ -227,6 +237,59 @@ def init_db():
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
     ''')
+
+    # ── Schema migration: add missing columns to existing tables ──
+    _add_column_if_missing(db, 'boats', 'model', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'boats', 'brand', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'boats', 'year', "INTEGER DEFAULT 0")
+    _add_column_if_missing(db, 'boats', 'hull_number', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'boats', 'length_m', "REAL DEFAULT 0")
+    _add_column_if_missing(db, 'boats', 'type', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'boats', 'mooring_position', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'boats', 'notes', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'boats', 'created_by', 'INTEGER')
+
+    _add_column_if_missing(db, 'maintenance', 'maintenance_type', "TEXT DEFAULT 'General'")
+    _add_column_if_missing(db, 'maintenance', 'category', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'maintenance', 'priority', "TEXT DEFAULT 'Normal'")
+    _add_column_if_missing(db, 'maintenance', 'started_date', 'TEXT')
+    _add_column_if_missing(db, 'maintenance', 'completed_date', 'TEXT')
+    _add_column_if_missing(db, 'maintenance', 'cost', "REAL DEFAULT 0.0")
+    _add_column_if_missing(db, 'maintenance', 'engine_hours', "REAL DEFAULT 0")
+    _add_column_if_missing(db, 'maintenance', 'fluid_level', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'maintenance', 'filter_condition', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'maintenance', 'battery_status', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'maintenance', 'created_by', 'INTEGER')
+    _add_column_if_missing(db, 'maintenance', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing(db, 'inspections', 'inspector_id', 'INTEGER')
+    _add_column_if_missing(db, 'inspections', 'weather', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'inspections', 'overall_status', "TEXT DEFAULT 'Pass'")
+
+    _add_column_if_missing(db, 'incidents', 'incident_type', "TEXT DEFAULT 'Damage'")
+    _add_column_if_missing(db, 'incidents', 'severity', "TEXT DEFAULT 'Low'")
+    _add_column_if_missing(db, 'incidents', 'photo_path', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'incidents', 'cost', "REAL DEFAULT 0.0")
+    _add_column_if_missing(db, 'incidents', 'reported_by', 'INTEGER')
+    _add_column_if_missing(db, 'incidents', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing(db, 'certificates', 'issue_date', 'TEXT')
+    _add_column_if_missing(db, 'certificates', 'created_by', 'INTEGER')
+    _add_column_if_missing(db, 'certificates', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing(db, 'users', 'email', "TEXT DEFAULT ''")
+    _add_column_if_missing(db, 'users', 'phone', "TEXT DEFAULT ''")
+
+    _add_column_if_missing(db, 'planning_docs', 'boat_id', 'INTEGER')
+    _add_column_if_missing(db, 'planning_docs', 'created_by', 'INTEGER')
+    _add_column_if_missing(db, 'planning_docs', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing(db, 'reports', 'sent_to_owner', "INTEGER DEFAULT 0")
+    _add_column_if_missing(db, 'reports', 'created_by', 'INTEGER')
+
+    _add_column_if_missing(db, 'engine_logs', 'created_by', 'INTEGER')
+
+    db.commit()
 
     # Create default admin user if not exists
     try:
@@ -1176,26 +1239,26 @@ def statistics():
     db = get_db()
     
     # Maintenance by status
-    maint_status = db.execute(
+    maint_status = [dict(r) for r in db.execute(
         "SELECT status, COUNT(*) as count FROM maintenance GROUP BY status"
-    ).fetchall()
+    ).fetchall()]
     
     # Maintenance by type
-    maint_type = db.execute(
+    maint_type = [dict(r) for r in db.execute(
         "SELECT maintenance_type, COUNT(*) as count FROM maintenance GROUP BY maintenance_type"
-    ).fetchall()
+    ).fetchall()]
     
     # Inspections over time (last 6 months)
-    inspections_monthly = db.execute(
+    inspections_monthly = [dict(r) for r in db.execute(
         "SELECT strftime('%Y-%m', inspection_date) as month, COUNT(*) as count "
         "FROM inspections WHERE inspection_date >= date('now', '-6 months') "
         "GROUP BY month ORDER BY month"
-    ).fetchall()
+    ).fetchall()]
     
     # Incidents by severity
-    incidents_severity = db.execute(
+    incidents_severity = [dict(r) for r in db.execute(
         "SELECT severity, COUNT(*) as count FROM incidents GROUP BY severity"
-    ).fetchall()
+    ).fetchall()]
     
     # Total costs
     total_maint_cost = db.execute(
@@ -1206,26 +1269,39 @@ def statistics():
     ).fetchone()['total']
     
     # Vessel types
-    vessel_types = db.execute(
+    vessel_types = [dict(r) for r in db.execute(
         "SELECT type, COUNT(*) as count FROM boats WHERE type != '' GROUP BY type"
-    ).fetchall()
+    ).fetchall()]
     
     # Certificates by status
-    cert_status = db.execute(
+    cert_status = [dict(r) for r in db.execute(
         "SELECT status, COUNT(*) as count FROM certificates GROUP BY status"
-    ).fetchall()
+    ).fetchall()]
     
     db.close()
     
+    # Pre-extract lists for JSON serialization in template
+    data = {
+        'maint_status_labels': [r['status'] for r in maint_status],
+        'maint_status_values': [r['count'] for r in maint_status],
+        'maint_type_labels': [r['maintenance_type'] for r in maint_type],
+        'maint_type_values': [r['count'] for r in maint_type],
+        'inspections_labels': [r['month'] for r in inspections_monthly],
+        'inspections_values': [r['count'] for r in inspections_monthly],
+        'incidents_labels': [r['severity'] for r in incidents_severity],
+        'incidents_values': [r['count'] for r in incidents_severity],
+        'vessel_labels': [r['type'] for r in vessel_types],
+        'vessel_values': [r['count'] for r in vessel_types],
+        'cert_labels': [r['status'] for r in cert_status],
+        'cert_values': [r['count'] for r in cert_status],
+    }
+    
     return render_template('statistics.html',
-                          maint_status=maint_status,
-                          maint_type=maint_type,
-                          inspections_monthly=inspections_monthly,
-                          incidents_severity=incidents_severity,
                           total_maint_cost=total_maint_cost,
                           total_incident_cost=total_incident_cost,
-                          vessel_types=vessel_types,
-                          cert_status=cert_status)
+                          maint_status=maint_status,
+                          cert_status=cert_status,
+                          **data)
 
 # ── Export Routes ─────────────────────────────────────────────────────
 
@@ -1266,8 +1342,9 @@ def export_csv(table_name):
         return redirect(url_for('index'))
     
     db = get_db()
-    rows = db.execute(f"SELECT * FROM {table_name}").fetchall()
-    columns = [description[0] for description in db.cursor().description]
+    cursor = db.execute(f"SELECT * FROM {table_name}")
+    columns = [description[0] for description in cursor.description]
+    rows = cursor.fetchall()
     db.close()
     
     output = io.StringIO()

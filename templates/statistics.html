@@ -179,45 +179,34 @@ const colors = ['#3182ce', '#38a169', '#d69e2e', '#e53e3e', '#805ad5', '#dd6b20'
 
 // Draw charts
 document.addEventListener('DOMContentLoaded', function() {
-    // Maintenance by Status (Pie)
     drawPieChart('chartMaintStatus',
-        {{ maint_status|map(attribute='status')|tojson }},
-        {{ maint_status|map(attribute='count')|tojson }},
+        {{ maint_status_labels|tojson }},
+        {{ maint_status_values|tojson }},
         ['#e53e3e', '#d69e2e', '#38a169']
     );
-    
-    // Maintenance by Type (Bar)
     drawBarChart('chartMaintType',
-        {{ maint_type|map(attribute='maintenance_type')|tojson }},
-        {{ maint_type|map(attribute='count')|tojson }},
+        {{ maint_type_labels|tojson }},
+        {{ maint_type_values|tojson }},
         colors
     );
-    
-    // Inspections over Time (Bar)
     drawBarChart('chartInspections',
-        {{ inspections_monthly|map(attribute='month')|tojson }},
-        {{ inspections_monthly|map(attribute='count')|tojson }},
+        {{ inspections_labels|tojson }},
+        {{ inspections_values|tojson }},
         ['#3182ce']
     );
-    
-    // Incidents by Severity (Pie)
     drawPieChart('chartIncidents',
-        {{ incidents_severity|map(attribute='severity')|tojson }},
-        {{ incidents_severity|map(attribute='count')|tojson }},
+        {{ incidents_labels|tojson }},
+        {{ incidents_values|tojson }},
         ['#38a169', '#d69e2e', '#dd6b20', '#e53e3e']
     );
-    
-    // Vessel Types (Pie)
     drawPieChart('chartVesselTypes',
-        {{ vessel_types|map(attribute='type')|tojson }},
-        {{ vessel_types|map(attribute='count')|tojson }},
+        {{ vessel_labels|tojson }},
+        {{ vessel_values|tojson }},
         colors
     );
-    
-    // Certificates by Status (Pie)
     drawPieChart('chartCertStatus',
-        {{ cert_status|map(attribute='status')|tojson }},
-        {{ cert_status|map(attribute='count')|tojson }},
+        {{ cert_labels|tojson }},
+        {{ cert_values|tojson }},
         ['#38a169', '#d69e2e', '#e53e3e']
     );
 });
