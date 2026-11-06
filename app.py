@@ -47,6 +47,10 @@ def get_db():
         # Create a execute method that uses the wrapped cursor
         def wrapped_execute(sql, params=None):
             cur = conn.cursor()
+            # Convert ? placeholders to %s for PostgreSQL
+            if params and '?' in sql:
+                # Replace ? with %s for psycopg2 compatibility
+                sql = sql.replace('?', '%s')
             cur.execute(sql, params)
             return cur
         conn.execute = wrapped_execute
@@ -500,56 +504,57 @@ def init_db():
     else:
         _create_tables_sqlite(db)
     
-    # Schema migration: add missing columns
-    _add_column_if_missing(db, 'boats', 'model', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'boats', 'brand', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'boats', 'year', "INTEGER DEFAULT 0")
-    _add_column_if_missing(db, 'boats', 'hull_number', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'boats', 'length_m', "REAL DEFAULT 0")
-    _add_column_if_missing(db, 'boats', 'type', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'boats', 'mooring_position', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'boats', 'notes', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'boats', 'created_by', 'INTEGER')
+    # Schema migration: add missing columns (SQLite only - PostgreSQL tables are fresh)
+    if not USE_POSTGRES:
+        _add_column_if_missing(db, 'boats', 'model', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'boats', 'brand', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'boats', 'year', "INTEGER DEFAULT 0")
+        _add_column_if_missing(db, 'boats', 'hull_number', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'boats', 'length_m', "REAL DEFAULT 0")
+        _add_column_if_missing(db, 'boats', 'type', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'boats', 'mooring_position', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'boats', 'notes', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'boats', 'created_by', 'INTEGER')
 
-    _add_column_if_missing(db, 'maintenance', 'maintenance_type', "TEXT DEFAULT 'General'")
-    _add_column_if_missing(db, 'maintenance', 'category', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'maintenance', 'priority', "TEXT DEFAULT 'Normal'")
-    _add_column_if_missing(db, 'maintenance', 'started_date', 'TEXT')
-    _add_column_if_missing(db, 'maintenance', 'completed_date', 'TEXT')
-    _add_column_if_missing(db, 'maintenance', 'cost', "REAL DEFAULT 0.0")
-    _add_column_if_missing(db, 'maintenance', 'engine_hours', "REAL DEFAULT 0")
-    _add_column_if_missing(db, 'maintenance', 'fluid_level', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'maintenance', 'filter_condition', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'maintenance', 'battery_status', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'maintenance', 'created_by', 'INTEGER')
-    _add_column_if_missing(db, 'maintenance', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        _add_column_if_missing(db, 'maintenance', 'maintenance_type', "TEXT DEFAULT 'General'")
+        _add_column_if_missing(db, 'maintenance', 'category', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'maintenance', 'priority', "TEXT DEFAULT 'Normal'")
+        _add_column_if_missing(db, 'maintenance', 'started_date', 'TEXT')
+        _add_column_if_missing(db, 'maintenance', 'completed_date', 'TEXT')
+        _add_column_if_missing(db, 'maintenance', 'cost', "REAL DEFAULT 0.0")
+        _add_column_if_missing(db, 'maintenance', 'engine_hours', "REAL DEFAULT 0")
+        _add_column_if_missing(db, 'maintenance', 'fluid_level', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'maintenance', 'filter_condition', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'maintenance', 'battery_status', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'maintenance', 'created_by', 'INTEGER')
+        _add_column_if_missing(db, 'maintenance', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
-    _add_column_if_missing(db, 'inspections', 'inspector_id', 'INTEGER')
-    _add_column_if_missing(db, 'inspections', 'weather', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'inspections', 'overall_status', "TEXT DEFAULT 'Pass'")
+        _add_column_if_missing(db, 'inspections', 'inspector_id', 'INTEGER')
+        _add_column_if_missing(db, 'inspections', 'weather', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'inspections', 'overall_status', "TEXT DEFAULT 'Pass'")
 
-    _add_column_if_missing(db, 'incidents', 'incident_type', "TEXT DEFAULT 'Damage'")
-    _add_column_if_missing(db, 'incidents', 'severity', "TEXT DEFAULT 'Low'")
-    _add_column_if_missing(db, 'incidents', 'photo_path', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'incidents', 'cost', "REAL DEFAULT 0.0")
-    _add_column_if_missing(db, 'incidents', 'reported_by', 'INTEGER')
-    _add_column_if_missing(db, 'incidents', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        _add_column_if_missing(db, 'incidents', 'incident_type', "TEXT DEFAULT 'Damage'")
+        _add_column_if_missing(db, 'incidents', 'severity', "TEXT DEFAULT 'Low'")
+        _add_column_if_missing(db, 'incidents', 'photo_path', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'incidents', 'cost', "REAL DEFAULT 0.0")
+        _add_column_if_missing(db, 'incidents', 'reported_by', 'INTEGER')
+        _add_column_if_missing(db, 'incidents', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
-    _add_column_if_missing(db, 'certificates', 'issue_date', 'TEXT')
-    _add_column_if_missing(db, 'certificates', 'created_by', 'INTEGER')
-    _add_column_if_missing(db, 'certificates', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        _add_column_if_missing(db, 'certificates', 'issue_date', 'TEXT')
+        _add_column_if_missing(db, 'certificates', 'created_by', 'INTEGER')
+        _add_column_if_missing(db, 'certificates', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
-    _add_column_if_missing(db, 'users', 'email', "TEXT DEFAULT ''")
-    _add_column_if_missing(db, 'users', 'phone', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'users', 'email', "TEXT DEFAULT ''")
+        _add_column_if_missing(db, 'users', 'phone', "TEXT DEFAULT ''")
 
-    _add_column_if_missing(db, 'planning_docs', 'boat_id', 'INTEGER')
-    _add_column_if_missing(db, 'planning_docs', 'created_by', 'INTEGER')
-    _add_column_if_missing(db, 'planning_docs', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        _add_column_if_missing(db, 'planning_docs', 'boat_id', 'INTEGER')
+        _add_column_if_missing(db, 'planning_docs', 'created_by', 'INTEGER')
+        _add_column_if_missing(db, 'planning_docs', 'updated_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
-    _add_column_if_missing(db, 'reports', 'sent_to_owner', "INTEGER DEFAULT 0")
-    _add_column_if_missing(db, 'reports', 'created_by', 'INTEGER')
+        _add_column_if_missing(db, 'reports', 'sent_to_owner', "INTEGER DEFAULT 0")
+        _add_column_if_missing(db, 'reports', 'created_by', 'INTEGER')
 
-    _add_column_if_missing(db, 'engine_logs', 'created_by', 'INTEGER')
+        _add_column_if_missing(db, 'engine_logs', 'created_by', 'INTEGER')
 
     db.commit()
 
@@ -620,7 +625,10 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id):
     db = get_db()
-    row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if USE_POSTGRES:
+        row = db.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
+    else:
+        row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     db.close()
     if row:
         d = dict(row)
