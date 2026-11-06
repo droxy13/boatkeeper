@@ -1707,10 +1707,16 @@ def api_alerts_count():
     unread = db.execute("SELECT COUNT(*) as c FROM alerts WHERE is_read = 0").fetchone()['c']
     
     # Count expiring certificates (within 30 days)
-    expiring = db.execute(
-        "SELECT COUNT(*) as c FROM certificates WHERE expiry_date IS NOT NULL "
-        "AND expiry_date != '' AND expiry_date <= date('now', '+30 days')"
-    ).fetchone()['c']
+    if USE_POSTGRES:
+        expiring = db.execute(
+            "SELECT COUNT(*) as c FROM certificates WHERE expiry_date IS NOT NULL "
+            "AND expiry_date != '' AND expiry_date::date <= (CURRENT_DATE + INTERVAL '30 days')"
+        ).fetchone()['c']
+    else:
+        expiring = db.execute(
+            "SELECT COUNT(*) as c FROM certificates WHERE expiry_date IS NOT NULL "
+            "AND expiry_date != '' AND expiry_date <= date('now', '+30 days')"
+        ).fetchone()['c']
     
     # Count open incidents
     open_incidents = db.execute(
