@@ -37,12 +37,31 @@ def _add_column_if_missing(db, table, column, col_def):
         columns = [row['name'] for row in info]
         if column not in columns:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
-    except Exception:
-        pass
+            db.commit()
+            print(f"Added column {column} to {table}")
+    except Exception as e:
+        print(f"Migration warning for {table}.{column}: {e}")
 
 def init_db():
     """Initialize the database with all tables and default admin user."""
     db = get_db()
+    
+    # Check if database needs full reset (old schema with no data)
+    try:
+        tables = [r['name'] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        has_old_schema = 'boats' in tables and 'maintenance' in tables
+        if has_old_schema:
+            # Check if boats table has the old simple schema (no mooring_position column)
+            cols = [r['name'] for r in db.execute("PRAGMA table_info(boats)").fetchall()]
+            if 'mooring_position' not in cols:
+                # Old schema detected - drop all tables and recreate fresh
+                print("Detected old database schema - recreating fresh...")
+                for table in tables:
+                    db.execute(f"DROP TABLE IF EXISTS {table}")
+                db.commit()
+    except Exception as e:
+        print(f"Schema check warning: {e}")
+    
     db.executescript('''
         -- Users table
         CREATE TABLE IF NOT EXISTS users (
