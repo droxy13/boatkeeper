@@ -24,9 +24,20 @@
                 <a href="{{ url_for('planning') }}" class="{% if request.endpoint == 'planning' %}active{% endif %}">Planning</a>
                 <a href="{{ url_for('yard_map') }}" class="{% if request.endpoint == 'yard_map' %}active{% endif %}">Yard Map</a>
                 <a href="{{ url_for('statistics') }}" class="{% if request.endpoint == 'statistics' %}active{% endif %}">Statistics</a>
-                <a href="{{ url_for('admin_panel') }}" class="{% if request.endpoint == 'admin_panel' %}active{% endif %}">Admin</a>
             </div>
             <div class="nav-right">
+                <!-- User Info -->
+                {% if current_user.is_authenticated %}
+                <span class="nav-user">👤 {{ current_user.full_name or current_user.username }}</span>
+                {% if current_user.role == 'admin' %}
+                <a href="{{ url_for('admin_panel') }}" class="nav-link {% if request.endpoint == 'admin_panel' %}active{% endif %}">Admin</a>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="nav-link">Login</a>
+                <a href="{{ url_for('register') }}" class="nav-link">Register</a>
+                {% endif %}
+                
                 <!-- Alerts Bell -->
                 <button class="alerts-btn" onclick="toggleAlertsPanel()" title="View alerts" id="alertsBtn">🔔 <span class="alerts-badge" id="alertsBadge" style="display:none;">0</span></button>
                 

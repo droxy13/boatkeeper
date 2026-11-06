@@ -159,6 +159,16 @@ body {
     flex-shrink: 0;
 }
 
+.nav-user {
+    color: rgba(255,255,255,0.9);
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.4rem 0.75rem;
+    background: rgba(255,255,255,0.1);
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+
 .btn-logout {
     background: var(--danger) !important;
     color: white !important;

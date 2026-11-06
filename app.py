@@ -31,33 +31,53 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access BoatKeeper.'
 
-# ── No-login mode: auto-login as "Public" user ────────────────────────
-# All routes are open – no password required.
+# ── Authentication ────────────────────────────────────────────────────
 
-class PublicUser(UserMixin):
-    """Auto-login user – no password needed."""
-    id = 1
-    username = 'public'
-    role = 'admin'
-    full_name = 'Public User'
+class User(UserMixin):
+    def __init__(self, id, username, role, full_name, email='', phone=''):
+        self.id = id
+        self.username = username
+        self.role = role
+        self.full_name = full_name
+        self.email = email
+        self.phone = phone
 
 @login_manager.user_loader
 def load_user(user_id):
-    return PublicUser()
+    db = get_db()
+    row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    db.close()
+    if row is None:
+        return None
+    row_dict = dict(row) if hasattr(row, 'keys') else {desc[0]: row[i] for i, desc in enumerate(row.description)}
+    return User(
+        id=row_dict['id'],
+        username=row_dict['username'],
+        role=row_dict['role'],
+        full_name=row_dict.get('full_name', ''),
+        email=row_dict.get('email', ''),
+        phone=row_dict.get('phone', '')
+    )
 
-# Replace @login_required with a no-op decorator
 def login_required(f):
-    return f
+    """Decorator to require login for a route."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def admin_required(f):
-    return f
-
-# Auto-login on every request
-@app.before_request
-def auto_login():
-    if not current_user.is_authenticated:
-        user = PublicUser()
-        login_user(user, force=True)
+    """Decorator to require admin role for a route."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or current_user.role != 'admin':
+            flash('Admin access required.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ── Database Helpers ──────────────────────────────────────────────────
 
@@ -670,29 +690,89 @@ INSPECTION_CATEGORIES = {
 
 # ── User Model ────────────────────────────────────────────────────────
 
-class User(UserMixin):
-    def __init__(self, id, username, role, full_name, email='', phone=''):
-        self.id = id
-        self.username = username
-        self.role = role
-        self.full_name = full_name
-        self.email = email
-        self.phone = phone
-
 # ── Auth Routes ───────────────────────────────────────────────────────
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # No login needed – redirect straight to dashboard
-    return redirect(url_for('index'))
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        db = get_db()
+        row = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        db.close()
+        
+        if row is not None:
+            row_dict = dict(row) if hasattr(row, 'keys') else {desc[0]: row[i] for i, desc in enumerate(row.description)}
+            if check_password_hash(row_dict['password_hash'], password):
+                user = User(
+                    id=row_dict['id'],
+                    username=row_dict['username'],
+                    role=row_dict['role'],
+                    full_name=row_dict.get('full_name', ''),
+                    email=row_dict.get('email', ''),
+                    phone=row_dict.get('phone', '')
+                )
+                login_user(user)
+                flash(f"Welcome back, {user.full_name or user.username}!", 'success')
+                return redirect(url_for('index'))
+        
+        flash('Invalid username or password.', 'error')
+    
+    return render_template('login.html')
 
 @app.route('/logout')
 def logout():
-    return redirect(url_for('index'))
+    logout_user()
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('login'))
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        full_name = request.form.get('full_name', '').strip()
+        email = request.form.get('email', '').strip()
+        phone = request.form.get('phone', '').strip()
+        
+        if not username or not password:
+            flash('Username and password are required.', 'error')
+            return render_template('register.html')
+        
+        if len(password) < 4:
+            flash('Password must be at least 4 characters.', 'error')
+            return render_template('register.html')
+        
+        db = get_db()
+        try:
+            db.execute(
+                "INSERT INTO users (username, password_hash, role, full_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)",
+                (username, generate_password_hash(password), 'employee', full_name, email, phone)
+            )
+            db.commit()
+            flash('Account created! Please log in.', 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e) or "duplicate key" in str(e):
+                flash('Username already exists.', 'error')
+            else:
+                flash(f'Error creating account: {e}', 'error')
+        db.close()
+    
+    return render_template('register.html')
 
 # ── Admin Routes ──────────────────────────────────────────────────────
 
 @app.route('/admin')
+@login_required
+@admin_required
 def admin_panel():
     db = get_db()
     users = db.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
@@ -709,6 +789,8 @@ def admin_panel():
     return render_template('admin.html', users=users, stats=stats)
 
 @app.route('/admin/user/add', methods=['POST'])
+@login_required
+@admin_required
 def add_user():
     username = request.form.get('username', '').strip()
     password = request.form.get('password', '')
@@ -738,6 +820,8 @@ def add_user():
     return redirect(url_for('admin_panel'))
 
 @app.route('/admin/user/delete/<int:user_id>', methods=['POST'])
+@login_required
+@admin_required
 def delete_user(user_id):
     if user_id == current_user.id:
         flash('You cannot delete your own account.', 'error')
@@ -753,6 +837,7 @@ def delete_user(user_id):
 # ── Main Dashboard ────────────────────────────────────────────────────
 
 @app.route('/')
+@login_required
 def index():
     db = get_db()
     boats = db.execute("SELECT * FROM boats ORDER BY name").fetchall()
@@ -809,6 +894,7 @@ def index():
 # ── Boat Routes ───────────────────────────────────────────────────────
 
 @app.route('/boats', methods=['GET', 'POST'])
+@login_required
 def boats():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -863,6 +949,7 @@ def boats():
     return render_template('boats.html', boats=boats)
 
 @app.route('/boats/<int:boat_id>/edit', methods=['POST'])
+@login_required
 def edit_boat(boat_id):
     name = request.form.get('name', '').strip()
     if not name:
@@ -902,6 +989,7 @@ def edit_boat(boat_id):
     return redirect(url_for('index'))
 
 @app.route('/boats/<int:boat_id>/delete', methods=['POST'])
+@login_required
 def delete_boat(boat_id):
     db = get_db()
     boat = db.execute("SELECT name FROM boats WHERE id = ?", (boat_id,)).fetchone()
@@ -915,6 +1003,7 @@ def delete_boat(boat_id):
 # ── Maintenance Routes ────────────────────────────────────────────────
 
 @app.route('/maintenance', methods=['GET', 'POST'])
+@login_required
 def maintenance():
     if request.method == 'POST':
         boat_id = request.form.get('boat_id', '0')
@@ -965,6 +1054,7 @@ def maintenance():
     return render_template('maintenance.html', boats=boats, maintenance=maintenance)
 
 @app.route('/maintenance/<int:task_id>/edit', methods=['POST'])
+@login_required
 def edit_maintenance(task_id):
     due_date = request.form.get('due_date', '') or None
     cost_str = request.form.get('cost', '0')
@@ -1008,6 +1098,7 @@ def edit_maintenance(task_id):
     return redirect(url_for('index'))
 
 @app.route('/maintenance/<int:task_id>/delete', methods=['POST'])
+@login_required
 def delete_maintenance(task_id):
     db = get_db()
     db.execute("DELETE FROM maintenance WHERE id = ?", (task_id,))
@@ -1019,6 +1110,7 @@ def delete_maintenance(task_id):
 # ── Inspection Routes ─────────────────────────────────────────────────
 
 @app.route('/inspections', methods=['GET', 'POST'])
+@login_required
 def inspections():
     if request.method == 'POST':
         boat_id = request.form.get('boat_id', '0')
@@ -1105,6 +1197,7 @@ def inspections():
                           categories=INSPECTION_CATEGORIES)
 
 @app.route('/inspections/<int:inspection_id>')
+@login_required
 def inspection_detail(inspection_id):
     db = get_db()
     inspection = db.execute(
@@ -1135,6 +1228,7 @@ def inspection_detail(inspection_id):
     return render_template('inspection_detail.html', inspection=dict(inspection), items_by_category=grouped)
 
 @app.route('/inspections/<int:inspection_id>/delete', methods=['POST'])
+@login_required
 def delete_inspection(inspection_id):
     db = get_db()
     db.execute("DELETE FROM inspections WHERE id = ?", (inspection_id,))
@@ -1146,6 +1240,7 @@ def delete_inspection(inspection_id):
 # ── Incident Routes ───────────────────────────────────────────────────
 
 @app.route('/incidents', methods=['GET', 'POST'])
+@login_required
 def incidents():
     if request.method == 'POST':
         boat_id = request.form.get('boat_id', '0')
@@ -1211,6 +1306,7 @@ def edit_incident(incident_id):
     return redirect(url_for('incidents'))
 
 @app.route('/incidents/<int:incident_id>/delete', methods=['POST'])
+@login_required
 def delete_incident(incident_id):
     db = get_db()
     db.execute("DELETE FROM incidents WHERE id = ?", (incident_id,))
@@ -1222,6 +1318,7 @@ def delete_incident(incident_id):
 # ── Certificates Routes ───────────────────────────────────────────────
 
 @app.route('/certificates', methods=['GET', 'POST'])
+@login_required
 def certificates():
     if request.method == 'POST':
         boat_id = request.form.get('boat_id', '0')
@@ -1286,6 +1383,7 @@ def edit_certificate(cert_id):
     return redirect(url_for('certificates'))
 
 @app.route('/certificates/<int:cert_id>/delete', methods=['POST'])
+@login_required
 def delete_certificate(cert_id):
     db = get_db()
     db.execute("DELETE FROM certificates WHERE id = ?", (cert_id,))
@@ -1297,6 +1395,7 @@ def delete_certificate(cert_id):
 # ── Reports Routes ────────────────────────────────────────────────────
 
 @app.route('/reports', methods=['GET', 'POST'])
+@login_required
 def reports():
     if request.method == 'POST':
         boat_id = request.form.get('boat_id', '0')
@@ -1335,6 +1434,7 @@ def reports():
     return render_template('reports.html', boats=boats, reports=report_list)
 
 @app.route('/reports/<int:report_id>/delete', methods=['POST'])
+@login_required
 def delete_report(report_id):
     db = get_db()
     db.execute("DELETE FROM reports WHERE id = ?", (report_id,))
@@ -1346,6 +1446,7 @@ def delete_report(report_id):
 # ── Engine Logs Routes ────────────────────────────────────────────────
 
 @app.route('/engine-logs', methods=['GET', 'POST'])
+@login_required
 def engine_logs():
     if request.method == 'POST':
         boat_id = request.form.get('boat_id', '0')
@@ -1384,6 +1485,7 @@ def engine_logs():
     return render_template('engine_logs.html', boats=boats, logs=log_list)
 
 @app.route('/engine-logs/<int:log_id>/delete', methods=['POST'])
+@login_required
 def delete_engine_log(log_id):
     db = get_db()
     db.execute("DELETE FROM engine_logs WHERE id = ?", (log_id,))
@@ -1395,6 +1497,7 @@ def delete_engine_log(log_id):
 # ── Alerts Routes ─────────────────────────────────────────────────────
 
 @app.route('/alerts/mark-read/<int:alert_id>', methods=['POST'])
+@login_required
 def mark_alert_read(alert_id):
     db = get_db()
     db.execute("UPDATE alerts SET is_read = 1 WHERE id = ?", (alert_id,))
@@ -1403,6 +1506,7 @@ def mark_alert_read(alert_id):
     return redirect(url_for('index'))
 
 @app.route('/alerts/mark-all-read', methods=['POST'])
+@login_required
 def mark_all_alerts_read():
     db = get_db()
     db.execute("UPDATE alerts SET is_read = 1 WHERE is_read = 0")
@@ -1414,6 +1518,7 @@ def mark_all_alerts_read():
 # ── Planning Routes ───────────────────────────────────────────────────
 
 @app.route('/planning', methods=['GET', 'POST'])
+@login_required
 def planning():
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
@@ -1462,6 +1567,7 @@ def edit_planning(doc_id):
     return redirect(url_for('index'))
 
 @app.route('/planning/<int:doc_id>/delete', methods=['POST'])
+@login_required
 def delete_planning(doc_id):
     db = get_db()
     db.execute("DELETE FROM planning_docs WHERE id = ?", (doc_id,))
@@ -1473,6 +1579,7 @@ def delete_planning(doc_id):
 # ── Yard Map Route ────────────────────────────────────────────────────
 
 @app.route('/yard-map')
+@login_required
 def yard_map():
     db = get_db()
     boats = db.execute("SELECT * FROM boats ORDER BY mooring_position, name").fetchall()
@@ -1517,6 +1624,7 @@ def yard_map():
 # ── Statistics Route ──────────────────────────────────────────────────
 
 @app.route('/statistics')
+@login_required
 def statistics():
     db = get_db()
     
@@ -1595,6 +1703,7 @@ def statistics():
 # ── Export Routes ─────────────────────────────────────────────────────
 
 @app.route('/export/json')
+@login_required
 def export_json():
     """Export all data as JSON for backup."""
     db = get_db()
@@ -1619,6 +1728,7 @@ def export_json():
     return response
 
 @app.route('/export/csv/<string:table_name>')
+@login_required
 def export_csv(table_name):
     """Export a specific table as CSV."""
     allowed_tables = ['boats', 'owners', 'maintenance', 'inspections', 'inspection_items',
@@ -1656,6 +1766,7 @@ def export_csv(table_name):
 # ── API Routes (for AJAX) ─────────────────────────────────────────────
 
 @app.route('/api/boats')
+@login_required
 def api_boats():
     db = get_db()
     boats = db.execute("SELECT * FROM boats ORDER BY name").fetchall()
@@ -1663,6 +1774,7 @@ def api_boats():
     return jsonify([dict(b) for b in boats])
 
 @app.route('/api/alerts/unread')
+@login_required
 def api_unread_alerts():
     db = get_db()
     alerts = db.execute(
@@ -1674,6 +1786,7 @@ def api_unread_alerts():
     return jsonify([dict(a) for a in alerts])
 
 @app.route('/api/alerts/count')
+@login_required
 def api_alerts_count():
     """Get count of unread alerts for the bell badge."""
     db = get_db()
