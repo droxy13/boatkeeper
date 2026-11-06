@@ -46,14 +46,12 @@ def init_db():
     """Initialize the database with all tables and default admin user."""
     db = get_db()
     
-    # Check if database needs full reset (old schema with no data)
+    # Check if database needs full reset (old incompatible schema)
     try:
         tables = [r['name'] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        has_old_schema = 'boats' in tables and 'maintenance' in tables
-        if has_old_schema:
-            # Check if boats table has the old simple schema (no mooring_position column)
-            cols = [r['name'] for r in db.execute("PRAGMA table_info(boats)").fetchall()]
-            if 'mooring_position' not in cols:
+        if 'maintenance' in tables:
+            cols = [r['name'] for r in db.execute("PRAGMA table_info(maintenance)").fetchall()]
+            if 'boat_id' not in cols:
                 # Old schema detected - drop all tables and recreate fresh
                 print("Detected old database schema - recreating fresh...")
                 for table in tables:
