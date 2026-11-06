@@ -766,13 +766,22 @@ def index():
         "LEFT JOIN boats b ON i.boat_id = b.id "
         "WHERE i.status = 'Open' ORDER BY i.incident_date DESC"
     ).fetchall()
-    expiring_certs = db.execute(
-        "SELECT c.*, b.name as boat_name FROM certificates c "
-        "LEFT JOIN boats b ON c.boat_id = b.id "
-        "WHERE c.expiry_date IS NOT NULL AND c.expiry_date != '' "
-        "AND c.expiry_date <= date('now', '+30 days') "
-        "ORDER BY c.expiry_date ASC"
-    ).fetchall()
+    if USE_POSTGRES:
+        expiring_certs = db.execute(
+            "SELECT c.*, b.name as boat_name FROM certificates c "
+            "LEFT JOIN boats b ON c.boat_id = b.id "
+            "WHERE c.expiry_date IS NOT NULL AND c.expiry_date != '' "
+            "AND c.expiry_date::date <= (CURRENT_DATE + INTERVAL '30 days') "
+            "ORDER BY c.expiry_date ASC"
+        ).fetchall()
+    else:
+        expiring_certs = db.execute(
+            "SELECT c.*, b.name as boat_name FROM certificates c "
+            "LEFT JOIN boats b ON c.boat_id = b.id "
+            "WHERE c.expiry_date IS NOT NULL AND c.expiry_date != '' "
+            "AND c.expiry_date <= date('now', '+30 days') "
+            "ORDER BY c.expiry_date ASC"
+        ).fetchall()
     db.close()
 
     # Stats
@@ -803,16 +812,29 @@ def boats():
             return redirect(url_for('boats'))
 
         db = get_db()
-        boat_id = db.execute(
-            "INSERT INTO boats (name, model, brand, year, hull_number, length_m, type, mooring_position, notes, created_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (name, request.form.get('model', ''), request.form.get('brand', ''),
-             int(request.form.get('year', 0) or 0), request.form.get('hull_number', ''),
-             float(request.form.get('length_m', 0) or 0), request.form.get('type', ''),
-             request.form.get('mooring_position', ''), request.form.get('notes', ''),
-             current_user.id)
-        ).lastrowid
-        db.commit()
+        if USE_POSTGRES:
+            cur = db.execute(
+                "INSERT INTO boats (name, model, brand, year, hull_number, length_m, type, mooring_position, notes, created_by) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                (name, request.form.get('model', ''), request.form.get('brand', ''),
+                 int(request.form.get('year', 0) or 0), request.form.get('hull_number', ''),
+                 float(request.form.get('length_m', 0) or 0), request.form.get('type', ''),
+                 request.form.get('mooring_position', ''), request.form.get('notes', ''),
+                 current_user.id)
+            )
+            db.commit()
+            boat_id = cur.fetchone()['id']
+        else:
+            boat_id = db.execute(
+                "INSERT INTO boats (name, model, brand, year, hull_number, length_m, type, mooring_position, notes, created_by) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (name, request.form.get('model', ''), request.form.get('brand', ''),
+                 int(request.form.get('year', 0) or 0), request.form.get('hull_number', ''),
+                 float(request.form.get('length_m', 0) or 0), request.form.get('type', ''),
+                 request.form.get('mooring_position', ''), request.form.get('notes', ''),
+                 current_user.id)
+            ).lastrowid
+            db.commit()
 
         # If owner info provided, create owner record
         owner_name = request.form.get('owner_name', '').strip()
@@ -1010,11 +1032,21 @@ def inspections():
         notes = request.form.get('notes', '')
 
         db = get_db()
-        inspection_id = db.execute(
-            "INSERT INTO inspections (boat_id, inspection_date, inspector_id, weather, notes) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (int(boat_id), inspection_date, current_user.id, weather, notes)
-        ).lastrowid
+        if USE_POSTGRES:
+            cur = db.execute(
+                "INSERT INTO inspections (boat_id, inspection_date, inspector_id, weather, notes) "
+                "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (int(boat_id), inspection_date, current_user.id, weather, notes)
+            )
+            db.commit()
+            inspection_id = cur.fetchone()['id']
+        else:
+            inspection_id = db.execute(
+                "INSERT INTO inspections (boat_id, inspection_date, inspector_id, weather, notes) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (int(boat_id), inspection_date, current_user.id, weather, notes)
+            ).lastrowid
+            db.commit()
 
         # Create checklist items from form data
         for category, items in INSPECTION_CATEGORIES.items():
