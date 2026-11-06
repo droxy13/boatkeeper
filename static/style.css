@@ -169,6 +169,22 @@ body {
     white-space: nowrap;
 }
 
+.nav-right .nav-link {
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.nav-right .nav-link:hover {
+    color: white;
+    background: rgba(255,255,255,0.15);
+}
+
 .btn-logout {
     background: var(--danger) !important;
     color: white !important;
