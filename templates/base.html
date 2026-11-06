@@ -24,9 +24,7 @@
                 <a href="{{ url_for('planning') }}" class="{% if request.endpoint == 'planning' %}active{% endif %}">Planning</a>
                 <a href="{{ url_for('yard_map') }}" class="{% if request.endpoint == 'yard_map' %}active{% endif %}">Yard Map</a>
                 <a href="{{ url_for('statistics') }}" class="{% if request.endpoint == 'statistics' %}active{% endif %}">Statistics</a>
-                {% if current_user.is_authenticated and current_user.role == 'admin' %}
                 <a href="{{ url_for('admin_panel') }}" class="{% if request.endpoint == 'admin_panel' %}active{% endif %}">Admin</a>
-                {% endif %}
             </div>
             <div class="nav-right">
                 <!-- Alerts Bell -->
@@ -50,7 +48,6 @@
                     </div>
                 </div>
                 
-                <a href="{{ url_for('logout') }}" class="btn-logout">Logout</a>
             </div>
         </div>
     </nav>
