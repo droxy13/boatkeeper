@@ -36,7 +36,7 @@ login_manager.login_message = 'Please log in to access BoatKeeper.'
 def get_db():
     """Get a database connection (PostgreSQL or SQLite)."""
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        conn = psycopg2.connect(DATABASE_URL)
         # Wrap execute to use RealDictCursor by default
         original_execute = conn.cursor
         def wrapped_cursor(*args, **kwargs):
@@ -92,7 +92,12 @@ def _add_column_if_missing(db, table, column, col_def):
     try:
         columns = _get_columns(db, table)
         if column not in columns:
-            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+            # For PostgreSQL, use VARCHAR instead of TEXT for some columns
+            if USE_POSTGRES:
+                col_def_pg = col_def.replace("TEXT DEFAULT", "VARCHAR(255) DEFAULT").replace("INTEGER", "INTEGER")
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def_pg}")
+            else:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
             db.commit()
             print(f"Added column {column} to {table}")
     except Exception as e:
