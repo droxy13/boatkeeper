@@ -1178,6 +1178,62 @@ h3 {
     display: block;
 }
 
+/* ── Backup Section ── */
+
+.backup-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.backup-card {
+    background: var(--card-bg);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.5);
+    transition: var(--transition);
+}
+
+.backup-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.backup-card h3 {
+    margin: 0 0 0.75rem 0;
+    color: var(--nav-bg);
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.backup-card p {
+    margin: 0 0 1rem 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.backup-card .form-group {
+    margin-bottom: 1rem;
+}
+
+.backup-card input[type="file"] {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+    width: 100%;
+    cursor: pointer;
+    transition: var(--transition);
+    background: var(--card-bg);
+}
+
+.backup-card input[type="file"]:hover {
+    border-color: var(--accent);
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {

@@ -567,12 +567,14 @@ def init_db():
         db.commit()
         cur.close()
     else:
-        # Drop all old tables (SQLite)
+        # Drop all old tables (SQLite) - disable foreign keys to avoid constraint errors
+        db.execute("PRAGMA foreign_keys = OFF")
         cur = db.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
         for (table,) in cur.fetchall():
             cur.execute(f"DROP TABLE IF EXISTS {table}")
         db.commit()
+        db.execute("PRAGMA foreign_keys = ON")
         cur.close()
 
     # Create tables using the appropriate syntax
@@ -1726,6 +1728,112 @@ def export_json():
     response.headers['Content-Type'] = 'application/json'
     response.headers['Content-Disposition'] = f'attachment; filename=boatkeeper_backup_{datetime.now().strftime("%Y%m%d")}.json'
     return response
+
+@app.route('/backup/download')
+@login_required
+@admin_required
+def backup_download():
+    """Download a complete database backup as JSON."""
+    return export_json()
+
+@app.route('/backup/restore', methods=['POST'])
+@login_required
+@admin_required
+def backup_restore():
+    """Restore database from a JSON backup file."""
+    if 'backup_file' not in request.files:
+        flash('No backup file provided.', 'error')
+        return redirect(url_for('admin_panel'))
+    
+    file = request.files['backup_file']
+    if not file.filename or not file.filename.endswith('.json'):
+        flash('Please upload a .json backup file.', 'error')
+        return redirect(url_for('admin_panel'))
+    
+    try:
+        data = json.loads(file.read())
+    except json.JSONDecodeError:
+        flash('Invalid backup file format.', 'error')
+        return redirect(url_for('admin_panel'))
+    
+    db = get_db()
+    try:
+        # Clear existing data (order matters for foreign keys)
+        if USE_POSTGRES:
+            db.execute("SET CONSTRAINTS ALL DEFERRED")
+            db.commit()
+        
+        # Delete in reverse dependency order
+        tables_to_clear = [
+            'inspection_items', 'maintenance', 'inspections', 'incidents',
+            'certificates', 'engine_logs', 'reports', 'alerts', 'planning_docs',
+            'owners', 'boats'
+        ]
+        for table in tables_to_clear:
+            try:
+                db.execute(f"DELETE FROM {table}")
+            except Exception:
+                pass
+        db.commit()
+        
+        # Reset sequences for PostgreSQL
+        if USE_POSTGRES:
+            for table in ['users', 'boats', 'owners', 'maintenance', 'inspections',
+                         'inspection_items', 'incidents', 'certificates', 'engine_logs',
+                         'reports', 'alerts', 'planning_docs']:
+                try:
+                    db.execute(f"ALTER SEQUENCE {table}_id_seq RESTART WITH 1")
+                except Exception:
+                    pass
+            db.commit()
+        
+        # Restore users (skip if admin exists)
+        if 'users' in data:
+            for user in data['users']:
+                try:
+                    db.execute(
+                        "INSERT INTO users (username, password_hash, role, full_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)",
+                        (user.get('username', ''), user.get('password_hash', ''), user.get('role', 'employee'),
+                         user.get('full_name', ''), user.get('email', ''), user.get('phone', ''))
+                    )
+                except Exception:
+                    pass
+        db.commit()
+        
+        # Restore other tables
+        table_mappings = {
+            'boats': ('boats', ['name', 'model', 'brand', 'year', 'hull_number', 'length_m', 'type', 'mooring_position', 'notes']),
+            'owners': ('owners', ['boat_id', 'owner_name', 'email', 'phone', 'address', 'notes']),
+            'maintenance': ('maintenance', ['boat_id', 'description', 'maintenance_type', 'category', 'status', 'priority', 'due_date', 'started_date', 'completed_date', 'notes', 'cost', 'engine_hours', 'fluid_level', 'filter_condition', 'battery_status']),
+            'inspections': ('inspections', ['boat_id', 'inspection_date', 'inspector_id', 'weather', 'overall_status', 'notes']),
+            'inspection_items': ('inspection_items', ['inspection_id', 'category', 'item_name', 'item_description', 'status', 'notes', 'photo_path']),
+            'incidents': ('incidents', ['boat_id', 'incident_type', 'severity', 'description', 'incident_date', 'status', 'notes', 'photo_path', 'cost']),
+            'certificates': ('certificates', ['boat_id', 'cert_type', 'cert_name', 'issue_date', 'expiry_date', 'status', 'notes']),
+            'engine_logs': ('engine_logs', ['boat_id', 'log_date', 'total_hours', 'notes']),
+            'reports': ('reports', ['boat_id', 'report_type', 'title', 'content', 'report_date', 'sent_to_owner']),
+            'planning_docs': ('planning_docs', ['title', 'description', 'boat_id', 'planned_start', 'planned_end', 'status', 'notes']),
+            'alerts': ('alerts', ['boat_id', 'alert_type', 'title', 'description', 'alert_date', 'is_read', 'related_id', 'related_table']),
+        }
+        
+        for backup_key, (table, columns) in table_mappings.items():
+            if backup_key in data:
+                for record in data[backup_key]:
+                    try:
+                        values = [record.get(col, '') for col in columns]
+                        placeholders = ', '.join(['?'] * len(columns))
+                        col_names = ', '.join(columns)
+                        db.execute(f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})", values)
+                    except Exception:
+                        pass
+            db.commit()
+        
+        flash(f'Database restored successfully! Restored {sum(len(data.get(k, [])) for k in table_mappings)} records.', 'success')
+    except Exception as e:
+        flash(f'Error restoring database: {e}', 'error')
+    finally:
+        db.close()
+    
+    return redirect(url_for('admin_panel'))
 
 @app.route('/export/csv/<string:table_name>')
 @login_required

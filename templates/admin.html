@@ -3,6 +3,30 @@
 {% block content %}
 <h1>Admin Panel</h1>
 
+<!-- Database Backup & Restore -->
+<div class="section">
+    <div class="section-header">
+        <h2>🗄️ Database Backup & Restore</h2>
+    </div>
+    <div class="backup-section">
+        <div class="backup-card">
+            <h3>💾 Download Backup</h3>
+            <p>Download a complete backup of your database including all boats, tasks, inspections, and users.</p>
+            <a href="{{ url_for('backup_download') }}" class="btn btn-primary">Download Backup</a>
+        </div>
+        <div class="backup-card">
+            <h3>📂 Restore from Backup</h3>
+            <p>Restore your database from a previously downloaded backup file. <strong>Warning:</strong> This will replace all current data.</p>
+            <form method="POST" action="{{ url_for('backup_restore') }}" enctype="multipart/form-data" onsubmit="return confirm('WARNING: This will replace ALL current data with the backup. Are you sure?')">
+                <div class="form-group">
+                    <input type="file" name="backup_file" accept=".json" required>
+                </div>
+                <button type="submit" class="btn btn-danger">Restore Database</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-number">{{ stats.boats }}</div>
